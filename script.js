@@ -97,6 +97,7 @@ const state = {
   roundLeftMs: GAME.roundSeconds * 1000,
   countdownLeftMs: 0,
   spawnAccMs: 0,
+  nextSpawnMs: 0,
   roundSpawns: 0,
   lastSpawnX: 0,
   gifts: [],
@@ -1151,14 +1152,19 @@ function spawnGift() {
   }
   const imageId = ids[Math.floor(Math.random() * ids.length)];
   const item = GAME.items[imageId];
-  let xPct = 18 + Math.random() * 64;
-  if (Math.abs(xPct - state.lastSpawnX) < 12) {
-    xPct = xPct < 50 ? xPct + 18 : xPct - 18;
+  const minGap = GAME.minSpawnXGapPct || 22;
+  let xPct = 14 + Math.random() * 72;
+  let tries = 0;
+  while (Math.abs(xPct - state.lastSpawnX) < minGap && tries < 8) {
+    xPct = 14 + Math.random() * 72;
+    tries += 1;
   }
   state.lastSpawnX = xPct;
   state.drops[imageId] += 1;
 
   const xPx = (xPct / 100) * window.innerWidth;
+  // Stagger entry so gifts don't appear on the same horizontal "step".
+  const yPx = -60 - Math.random() * 140;
   const el = document.createElement("img");
   el.className = "falling-gift";
   el.src = `./src/assets/images/${imageId}.webp`;
@@ -1166,17 +1172,17 @@ function spawnGift() {
   el.decoding = "async";
   el.style.left = "0px";
   el.style.top = "0px";
-  el.style.transform = `translate3d(${xPx}px, -72px, 0) translate(-50%, 0)`;
+  el.style.transform = `translate3d(${xPx}px, ${yPx}px, 0) translate(-50%, 0)`;
   els.fallingLayer.appendChild(el);
   state.gifts.push({
     el,
     imageId,
     points: item.points,
-    speed: item.speed,
+    speed: item.speed * (0.88 + Math.random() * 0.28),
     collecting: false,
     xPx,
-    yPx: -72,
-    sway: (Math.random() - 0.5) * 18,
+    yPx,
+    sway: (Math.random() - 0.5) * 22,
     phase: Math.random() * Math.PI * 2,
   });
 }
@@ -1272,6 +1278,7 @@ async function beginRound() {
   state.roundLeftMs = GAME.roundSeconds * 1000;
   state.countdownLeftMs = GAME.countdownMs;
   state.spawnAccMs = 0;
+  state.nextSpawnMs = 0;
   state.roundSpawns = 0;
   state.pausedByFace = false;
   state.faceLostMs = 0;
@@ -1562,8 +1569,8 @@ function tick(delta) {
     if (state.countdownLeftMs <= 0) {
       hideStatus();
       setPhase("playing");
-      state.spawnAccMs =
-        GAME.spawnEveryMs[state.round - 1] || GAME.spawnEveryMs[0];
+      state.spawnAccMs = 0;
+      state.nextSpawnMs = 350;
     }
     tickDebug(state.gifts[0]);
     return;
@@ -1592,9 +1599,15 @@ function tick(delta) {
 
   const spawnEvery = GAME.spawnEveryMs[state.round - 1] || GAME.spawnEveryMs[0];
   const spawnMax = GAME.spawnMax[state.round - 1] || GAME.spawnMax[0];
+  if (!state.nextSpawnMs) {
+    const jitter = GAME.spawnJitterMs || 0;
+    state.nextSpawnMs = Math.max(700, spawnEvery + (Math.random() * 2 - 1) * jitter);
+  }
   state.spawnAccMs += delta;
-  if (state.roundSpawns < spawnMax && state.spawnAccMs >= spawnEvery) {
+  if (state.roundSpawns < spawnMax && state.spawnAccMs >= state.nextSpawnMs) {
     state.spawnAccMs = 0;
+    const jitter = GAME.spawnJitterMs || 0;
+    state.nextSpawnMs = Math.max(700, spawnEvery + (Math.random() * 2 - 1) * jitter);
     spawnGift();
     state.roundSpawns += 1;
   }

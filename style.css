@@ -195,7 +195,7 @@ body[data-phase="ended-campaign"] .title {
   left: 0;
   right: 0;
   bottom: 0;
-  height: clamp(120px, 22vh, 200px);
+  height: 33.333vh;
   z-index: 2;
   pointer-events: none;
   overflow: visible;
@@ -206,75 +206,75 @@ body[data-phase="ended-campaign"] .title {
   z-index: 2;
   pointer-events: none;
   height: auto;
-  max-height: 42%;
+  max-height: 72%;
   object-fit: contain;
   transform-origin: center bottom;
 }
 
-/* Ground stage: keep ornaments in a low strip so the catch zone stays clear */
+/* Bottom third of the screen — larger characters and props */
 .ct1 {
-  width: clamp(36px, 7.5vw, 72px);
-  bottom: 8%;
-  left: 3%;
+  width: clamp(64px, 14vw, 140px);
+  bottom: 10%;
+  left: 2%;
   animation: scaleAlt 1.4s alternate infinite ease-in-out;
 }
 .man2 {
-  width: clamp(40px, 8vw, 78px);
-  bottom: 10%;
-  left: 11%;
+  width: clamp(72px, 15vw, 150px);
+  bottom: 14%;
+  left: 12%;
   animation: moveY 2s alternate infinite ease-in-out;
 }
 .element3 {
-  width: clamp(32px, 6.5vw, 64px);
+  width: clamp(58px, 12vw, 120px);
   bottom: 0;
-  left: 7%;
+  left: 6%;
   animation: rotateAlt 2s alternate infinite ease-in-out;
 }
 .snow_ball {
-  width: clamp(28px, 6vw, 58px);
-  bottom: 18%;
-  left: 20%;
+  width: clamp(52px, 11vw, 110px);
+  bottom: 28%;
+  left: 22%;
 }
 .element5 {
-  width: clamp(24px, 5vw, 48px);
-  bottom: 6%;
-  left: 24%;
+  width: clamp(44px, 9vw, 96px);
+  bottom: 8%;
+  left: 28%;
   animation: scaleAlt 1.2s alternate infinite ease-in-out;
 }
 .man1 {
-  width: clamp(34px, 7vw, 68px);
-  bottom: 2%;
-  right: 22%;
+  width: clamp(64px, 13vw, 130px);
+  bottom: 4%;
+  right: 24%;
   z-index: 3;
   animation: rotateAlt 1.2s alternate infinite ease-in-out;
 }
 .ct4 {
-  width: clamp(30px, 6.5vw, 62px);
-  bottom: 22%;
-  right: 14%;
+  width: clamp(56px, 12vw, 118px);
+  bottom: 36%;
+  right: 12%;
   animation: scaleAlt 1.3s alternate infinite ease-in-out;
 }
 .ct3 {
-  width: clamp(22px, 4.5vw, 44px);
-  bottom: 28%;
-  right: 7%;
+  width: clamp(40px, 8vw, 84px);
+  bottom: 48%;
+  right: 5%;
 }
 .element9 {
-  width: clamp(34px, 7.5vw, 70px);
+  width: clamp(66px, 14vw, 138px);
   bottom: 0;
-  right: 8%;
+  right: 6%;
   z-index: 3;
   animation: scaleAlt 1.4s alternate infinite ease-in-out;
 }
 .train {
-  width: clamp(34px, 7.5vw, 72px);
-  bottom: 10%;
+  width: clamp(64px, 13vw, 130px);
+  bottom: 12%;
   animation: trainAnimation 4s linear infinite;
 }
 
 @keyframes trainAnimation {
   0% { right: 1%; }
-  100% { right: 18%; }
+  100% { right: 20%; }
 }
 @keyframes scaleAlt {
   0% { transform: scale(1); }
@@ -282,7 +282,7 @@ body[data-phase="ended-campaign"] .title {
 }
 @keyframes moveY {
   0% { transform: translateY(0); }
-  100% { transform: translateY(6px); }
+  100% { transform: translateY(8px); }
 }
 @keyframes rotateAlt {
   0% { transform: rotate(0deg); }
@@ -290,8 +290,8 @@ body[data-phase="ended-campaign"] .title {
 }
 
 body.is-playing .decor {
-  height: clamp(96px, 16vh, 150px);
-  opacity: 0.92;
+  height: 33.333vh;
+  opacity: 1;
 }
 
 #hud {
@@ -612,21 +612,21 @@ body[data-phase="ready"] #cta-play {
   .round { margin-top: 24px; font-size: 0.75rem; }
 
   .decor {
-    height: clamp(100px, 18vh, 140px);
+    height: 33.333vh;
   }
   .decor img {
-    max-height: 48%;
+    max-height: 78%;
   }
-  .ct1 { left: 2%; bottom: 6%; width: 11vw; }
-  .man2 { left: 12%; bottom: 8%; width: 12vw; }
-  .element3 { left: 6%; bottom: 0; width: 10vw; }
-  .snow_ball { left: 22%; bottom: 14%; width: 9vw; }
-  .element5 { left: 28%; bottom: 4%; width: 8vw; }
-  .man1 { right: 24%; bottom: 1%; width: 11vw; }
-  .ct4 { right: 12%; bottom: 16%; width: 10vw; }
-  .ct3 { right: 5%; bottom: 22%; width: 7vw; }
-  .element9 { right: 6%; bottom: 0; width: 12vw; }
-  .train { bottom: 8%; width: 12vw; }
+  .ct1 { left: 1%; bottom: 8%; width: 16vw; }
+  .man2 { left: 14%; bottom: 12%; width: 17vw; }
+  .element3 { left: 5%; bottom: 0; width: 14vw; }
+  .snow_ball { left: 24%; bottom: 26%; width: 13vw; }
+  .element5 { left: 30%; bottom: 6%; width: 11vw; }
+  .man1 { right: 26%; bottom: 2%; width: 15vw; }
+  .ct4 { right: 10%; bottom: 34%; width: 14vw; }
+  .ct3 { right: 3%; bottom: 46%; width: 10vw; }
+  .element9 { right: 4%; bottom: 0; width: 16vw; }
+  .train { bottom: 10%; width: 15vw; }
 
   #screen-bag {
     width: min(132px, 38vw);
@@ -652,8 +652,7 @@ body[data-phase="ready"] #cta-play {
 }
 
 @media (max-width: 380px) {
-  .decor { height: 96px; }
-  .ct4, .ct3, .snow_ball { opacity: 0.85; }
+  .decor { height: 33.333vh; }
   #camera-preview {
     width: 76px;
     height: 76px;
