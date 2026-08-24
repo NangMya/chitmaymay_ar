@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Christmas Catch</title>
+    <meta name="description" content="Catch falling gifts with your face. Camera stays on your phone." />
+    <meta name="theme-color" content="#1a0b3d" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Christmas Catch" />
+    <meta property="og:description" content="A browser AR catch game. No app download. Camera stays on your phone." />
+    <meta property="og:image" content="src/assets/images/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Christmas Catch" />
+    <meta name="twitter:description" content="A browser AR catch game. No app download." />
+    <meta name="twitter:image" content="src/assets/images/og.png" />
+    <link rel="icon" href="src/assets/images/favicon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="src/assets/images/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body data-phase="splash">
+    <audio id="main" hidden loop preload="none">
+      <source src="./src/assets/audios/main.mp3" type="audio/mp3" />
+    </audio>
+    <audio id="fail" hidden preload="none">
+      <source src="./src/assets/audios/fail.wav" type="audio/wav" />
+    </audio>
+    <audio id="increase_score" hidden preload="none">
+      <source src="./src/assets/audios/success.mp3" type="audio/mp3" />
+    </audio>
+    <audio id="game_over" hidden preload="none">
+      <source src="./src/assets/audios/game_over.wav" type="audio/wav" />
+    </audio>
+    <audio id="game_passed" hidden preload="none">
+      <source src="./src/assets/audios/passed.mp3" type="audio/mp3" />
+    </audio>
+    <audio id="game_song" hidden preload="none" loop>
+      <source src="./src/assets/audios/game_song.mp3" type="audio/mp3" />
+    </audio>
+
+    <div id="ar-scene">
+      <a-scene
+        data-mindar="autoStart: false"
+        color-space="sRGB"
+        renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
+        background="transparent: true"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false"
+      >
+        <a-assets>
+          <img id="bag" src="./src/assets/images/bag.webp" />
+          <img id="vs1" src="./src/assets/images/vs1.webp" />
+          <img id="vs2" src="./src/assets/images/vs2.webp" />
+          <img id="vs3" src="./src/assets/images/vs3.webp" />
+          <img id="vs4" src="./src/assets/images/vs4.webp" />
+          <img id="vs5" src="./src/assets/images/vs5.webp" />
+        </a-assets>
+
+        <a-entity id="falling-images"></a-entity>
+        <a-entity mindar-face-target="anchorIndex: 0" id="faceTarget">
+          <a-image
+            id="bracket"
+            width="0.7"
+            height="0.45"
+            src="#bag"
+            position="0 -1.15 0.1"
+            scale="1.6 2.1 1"
+            visible="false"
+          ></a-image>
+        </a-entity>
+        <a-entity mindar-face-target="anchorIndex: 13" id="mouthTarget"></a-entity>
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+      </a-scene>
+    </div>
+
+    <img id="header" src="./src/assets/images/header.webp" class="header" alt="" />
+    <img id="logo" src="./src/assets/images/logo.webp" class="logo" alt="Logo" />
+    <div id="camera-preview" hidden>
+      <video id="camera-feed" autoplay playsinline muted></video>
+    </div>
+    <img id="title" src="./src/assets/images/title.webp" class="title" alt="Christmas Catch" />
+
+    <div id="falling-layer" aria-hidden="true"></div>
+    <img id="screen-bag" src="./src/assets/images/bag.webp" alt="" hidden />
+
+    <div class="decor" aria-hidden="true">
+      <img id="ct1" src="./src/assets/images/ct1.webp" class="ct1" alt="" loading="lazy" decoding="async" />
+      <img id="man2" src="./src/assets/images/man2.webp" class="man2" alt="" loading="lazy" decoding="async" />
+      <img id="element3" src="./src/assets/images/element3.webp" class="element3" alt="" loading="lazy" decoding="async" />
+      <img id="snow_ball" src="./src/assets/images/snow_ball.webp" class="snow_ball" alt="" loading="lazy" decoding="async" />
+      <img id="element5" src="./src/assets/images/element5.webp" class="element5" alt="" loading="lazy" decoding="async" />
+      <img id="man1" src="./src/assets/images/man1.webp" class="man1" alt="" loading="lazy" decoding="async" />
+      <img id="ct4" src="./src/assets/images/ct4.webp" class="ct4" alt="" loading="lazy" decoding="async" />
+      <img id="ct3" src="./src/assets/images/ct3.webp" class="ct3" alt="" loading="lazy" decoding="async" />
+      <img id="element9" src="./src/assets/images/element9.webp" class="element9" alt="" loading="lazy" decoding="async" />
+      <img id="train" src="./src/assets/images/train.webp" class="train" alt="" loading="lazy" decoding="async" />
+    </div>
+
+    <button type="button" id="mute-btn" aria-pressed="false" data-i18n="soundOn">Sound on</button>
+
+    <div id="hud" hidden>
+      <div class="life-info">
+        <img id="live1" src="./src/assets/images/live.webp" class="live1" alt="" />
+        <img id="live2" src="./src/assets/images/live.webp" class="live2" alt="" />
+        <img id="live3" src="./src/assets/images/live.webp" class="live3" alt="" />
+        <p class="round">Round <span id="round-number">1</span></p>
+      </div>
+      <div class="progress-container">
+        <svg class="progress-circle" viewBox="0 0 36 36" aria-hidden="true">
+          <path
+            class="circle-border"
+            d="M18 2.0845 a 15.9155 15.9155 0 1 1 0 31.831 a 15.9155 15.9155 0 1 1 0 -31.831"
+          />
+          <path
+            class="circle-bg"
+            d="M18 2.0845 a 15.9155 15.9155 0 1 1 0 31.831 a 15.9155 15.9155 0 1 1 0 -31.831"
+          />
+          <path
+            class="circle"
+            d="M18 2.0845 a 15.9155 15.9155 0 1 1 0 31.831 a 15.9155 15.9155 0 1 1 0 -31.831"
+          />
+        </svg>
+        <div class="circle-text">
+          <div>Score</div>
+          <div><strong id="hud-score">0/100</strong></div>
+        </div>
+      </div>
+      <p id="hud-timer">0:30</p>
+    </div>
+
+    <p id="distance-hint" hidden></p>
+    <p id="face-lost" hidden data-i18n="faceLost">Center your face to keep playing</p>
+    <div id="ar-loading" hidden>
+      <p id="ar-loading-label" data-i18n="loadingAr">Loading AR…</p>
+      <div class="load-track" aria-hidden="true"><div id="ar-loading-bar"></div></div>
+      <p id="ar-loading-detail"></p>
+    </div>
+
+    <div id="inapp-gate" hidden>
+      <p data-i18n="inappNeed">This game needs a full browser camera.</p>
+      <p id="inapp-copy"></p>
+    </div>
+
+    <div id="campaign-ended" hidden>
+      <h1 data-i18n="endedTitle">This campaign has ended</h1>
+      <p data-i18n="endedBody">Thanks for playing Christmas Catch.</p>
+    </div>
+
+    <div id="splash">
+      <p class="privacy" data-i18n="privacy">
+        We use your camera to catch gifts.
+      </p>
+      <p class="how-to" data-i18n="howTo">After the camera is on, wave to start.</p>
+      <button type="button" id="cta-start" data-i18n="start">Turn on camera</button>
+    </div>
+
+    <div id="camera-denied" hidden>
+      <p data-i18n="cameraDenied">Camera access is needed to play. Allow the camera and try again.</p>
+      <button type="button" id="camera-retry" data-i18n="tryAgain">Try again</button>
+    </div>
+
+    <div id="face-coach" hidden>
+      <p data-i18n="coach">Sit about one foot from the phone. Tap Play or wave your hand to start.</p>
+      <button type="button" id="coach-skip" data-i18n="skip">Skip</button>
+    </div>
+
+    <button type="button" id="cta-play" hidden data-i18n="play">Play</button>
+    <p id="play-hint" hidden data-i18n="playHint">Wave your hand in the camera — or tap here</p>
+    <button type="button" id="cta-retry" hidden data-i18n="retry">Retry</button>
+
+    <div id="end-card" hidden>
+      <div class="end-panel">
+        <p class="end-kicker">Christmas Catch</p>
+        <h2 id="end-title">Game over</h2>
+        <p class="end-score-label" data-i18n="totalScore">Total score</p>
+        <p id="end-score" class="end-score-value"></p>
+        <ul id="end-rounds" class="end-rounds"></ul>
+        <p class="end-note" data-i18n="cameraNotSaved">Your camera video was not saved.</p>
+        <form id="lead-form" hidden>
+          <label class="hp" aria-hidden="true">
+            Company
+            <input type="text" name="company" tabindex="-1" autocomplete="off" />
+          </label>
+          <input
+            type="email"
+            name="email"
+            id="lead-email"
+            autocomplete="email"
+            inputmode="email"
+            data-i18n="leadPlaceholder"
+            placeholder="Email for the prize draw (optional)"
+          />
+          <button type="submit" id="lead-submit" data-i18n="leadSubmit">Enter draw</button>
+          <p id="lead-status"></p>
+        </form>
+        <div class="end-actions">
+          <button type="button" id="end-share" data-i18n="share">Save / Share score</button>
+          <button type="button" id="end-retry" data-i18n="playAgain">Play again</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="modalAlert" class="modal">
+      <div class="modal-content">
+        <p id="status-title"></p>
+        <p id="status-detail"></p>
+      </div>
+    </div>
+
+    <div id="debug-hud" hidden></div>
+    <script src="./src/game/config.js"></script>
+    <script src="./src/game/i18n.js"></script>
+    <script src="./src/game/analytics.js"></script>
+    <script src="./src/game/camera.js"></script>
+    <script src="./src/game/campaign.js"></script>
+    <script src="./src/game/vendors.js"></script>
+    <script src="./src/game/live-tweak.js"></script>
+    <script src="./src/game/share-card.js"></script>
+    <script src="./src/game/ops.js"></script>
+    <script src="./script.js"></script>
+  </body>
+</html>

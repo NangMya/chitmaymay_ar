@@ -1,0 +1,12 @@
+{
+  "name": "christmasar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Face-tracking Christmas catch game built with MindAR and A-Frame",
+  "scripts": {
+    "start": "node scripts/phone.js --local",
+    "phone": "node scripts/phone.js",
+    "smoke": "node scripts/smoke.js",
+    "pack": "node scripts/pack-rich.js"
+  }
+}
