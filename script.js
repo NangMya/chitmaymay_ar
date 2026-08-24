@@ -84,6 +84,8 @@ const state = {
   waveSamples: [],
   waveArmedAt: 0,
   waveSeenAt: 0,
+  waveFaceX: null,
+  waveFaceLean: 0,
   waveRaf: 0,
   waveNoise: 0,
   waveNoiseSamples: [],
@@ -549,9 +551,11 @@ let wavePrev = null;
 const WAVE_COLS = 4;
 const WAVE_ROWS = 3;
 const waveCanvas = document.createElement("canvas");
-waveCanvas.width = 96;
-waveCanvas.height = 54;
-const waveCtx = waveCanvas.getContext("2d", { willReadFrequently: true }) || waveCanvas.getContext("2d");
+waveCanvas.width = 128;
+waveCanvas.height = 72;
+const waveCtx =
+  waveCanvas.getContext("2d", { willReadFrequently: true }) ||
+  waveCanvas.getContext("2d");
 
 function waveVideo() {
   const systemVideo = mindarVideoEl();
@@ -576,7 +580,19 @@ function sampleHandMotion() {
   const w = waveCanvas.width;
   const h = waveCanvas.height;
   try {
-    waveCtx.drawImage(video, 0, 0, w, h);
+    // Prefer the upper 70% of the frame where a hand wave usually appears.
+    const srcH = Math.floor(video.videoHeight * 0.7);
+    waveCtx.drawImage(
+      video,
+      0,
+      0,
+      video.videoWidth,
+      Math.max(16, srcH),
+      0,
+      0,
+      w,
+      h
+    );
     const pixels = waveCtx.getImageData(0, 0, w, h).data;
     if (!wavePrev || wavePrev.length !== w * h) {
       wavePrev = new Uint8Array(w * h);
@@ -596,7 +612,7 @@ function sampleHandMotion() {
         const gray = pixels[i * 4] * 0.3 + pixels[i * 4 + 1] * 0.59 + pixels[i * 4 + 2] * 0.11;
         const delta = Math.abs(gray - wavePrev[i]);
         wavePrev[i] = gray;
-        if (delta > 18) {
+        if (delta > 12) {
           changed += 1;
         }
         const col = Math.min(WAVE_COLS - 1, Math.floor((x * WAVE_COLS) / w));
@@ -618,12 +634,26 @@ function sampleHandMotion() {
     const medCell = means[Math.floor(means.length / 2)] || 0;
     return {
       maxCell,
-      localized: maxCell > Math.max(10, medCell * 1.5),
+      localized: maxCell > Math.max(6, medCell * 1.25),
       change: changed / count,
     };
   } catch (_err) {
     return null;
   }
+}
+
+function sampleFaceLeanMotion() {
+  const ndc = faceNdc();
+  if (!ndc) {
+    return 0;
+  }
+  if (state.waveFaceX == null) {
+    state.waveFaceX = ndc.x;
+    return 0;
+  }
+  const delta = Math.abs(ndc.x - state.waveFaceX);
+  state.waveFaceX = ndc.x;
+  return delta;
 }
 
 function resetWaveWatch() {
@@ -633,6 +663,8 @@ function resetWaveWatch() {
   state.waveNoiseSamples = [];
   state.waveSeenAt = 0;
   state.waveArmedAt = 0;
+  state.waveFaceX = null;
+  state.waveFaceLean = 0;
 }
 
 function startWaveWatch() {
@@ -987,7 +1019,7 @@ function enterReady() {
   show(els.splash, false);
   show(els.denied, false);
   show(els.coach, false);
-  show(els.play, false);
+  show(els.play, true);
   show(els.playHint, true);
   show(els.hud, false);
   hideBag();
@@ -1119,20 +1151,22 @@ function spawnGift() {
   }
   const imageId = ids[Math.floor(Math.random() * ids.length)];
   const item = GAME.items[imageId];
-  let x = 18 + Math.random() * 64;
-  if (Math.abs(x - state.lastSpawnX) < 12) {
-    x = x < 50 ? x + 18 : x - 18;
+  let xPct = 18 + Math.random() * 64;
+  if (Math.abs(xPct - state.lastSpawnX) < 12) {
+    xPct = xPct < 50 ? xPct + 18 : xPct - 18;
   }
-  state.lastSpawnX = x;
+  state.lastSpawnX = xPct;
   state.drops[imageId] += 1;
 
+  const xPx = (xPct / 100) * window.innerWidth;
   const el = document.createElement("img");
   el.className = "falling-gift";
   el.src = `./src/assets/images/${imageId}.webp`;
   el.alt = "";
-  el.style.left = `${x}vw`;
-  el.style.top = "0";
-  el.style.transform = "translate3d(-50%, -12vh, 0)";
+  el.decoding = "async";
+  el.style.left = "0px";
+  el.style.top = "0px";
+  el.style.transform = `translate3d(${xPx}px, -72px, 0) translate(-50%, 0)`;
   els.fallingLayer.appendChild(el);
   state.gifts.push({
     el,
@@ -1140,7 +1174,10 @@ function spawnGift() {
     points: item.points,
     speed: item.speed,
     collecting: false,
-    y: -12,
+    xPx,
+    yPx: -72,
+    sway: (Math.random() - 0.5) * 18,
+    phase: Math.random() * Math.PI * 2,
   });
 }
 
@@ -1378,6 +1415,12 @@ function tickWaveStart() {
     return;
   }
   const motion = sampleHandMotion();
+  const lean = sampleFaceLeanMotion();
+  state.waveFaceLean = (state.waveFaceLean || 0) * 0.85 + lean;
+  if (state.waveFaceLean >= (GAME.wave.faceLean || 0.12)) {
+    startFromReady();
+    return;
+  }
   if (!motion) {
     return;
   }
@@ -1403,11 +1446,12 @@ function tickWaveStart() {
   if (state.waveSamples.length < GAME.wave.hotFrames) {
     return;
   }
-  const floor = Math.max(GAME.wave.motionMin, (state.waveNoise || 0) * 2.2);
+  const floor = Math.max(GAME.wave.motionMin, (state.waveNoise || 0) * 1.6);
   const hot = state.waveSamples.filter((row) => {
     const hit = row.motion.maxCell >= floor && row.motion.localized;
     const cover = row.motion.change >= GAME.wave.changeMin;
-    return hit || cover;
+    const soft = row.motion.maxCell >= floor * 0.85;
+    return hit || cover || soft;
   }).length;
   if (hot >= GAME.wave.hotFrames) {
     startFromReady();
@@ -1555,7 +1599,9 @@ function tick(delta) {
     state.roundSpawns += 1;
   }
 
-  const dt = delta / 1000;
+  const dtMs = Math.min(48, delta);
+  const fallBase = (GAME.fallPxPerSec || 220) * (dtMs / 1000);
+  const bottomLimit = window.innerHeight + 96;
   for (let i = state.gifts.length - 1; i >= 0; i -= 1) {
     const gift = state.gifts[i];
     if (!gift.el) {
@@ -1571,13 +1617,16 @@ function tick(delta) {
       }
       continue;
     }
-    gift.y += gift.speed * dt * 42;
-    gift.el.style.transform = `translate3d(-50%, ${gift.y}vh, 0)`;
+    gift.yPx += fallBase * gift.speed;
+    gift.phase = (gift.phase || 0) + dtMs * 0.004;
+    const swayX = Math.sin(gift.phase) * (gift.sway || 0);
+    const drawX = gift.xPx + swayX;
+    gift.el.style.transform = `translate3d(${drawX}px, ${gift.yPx}px, 0) translate(-50%, 0)`;
     if (isCatch(gift)) {
       catchGift(gift);
       continue;
     }
-    if (gift.y > 108) {
+    if (gift.yPx > bottomLimit) {
       if (gift.el.parentNode) {
         gift.el.parentNode.removeChild(gift.el);
       }

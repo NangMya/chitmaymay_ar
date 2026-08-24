@@ -9,8 +9,8 @@ const STRINGS = {
     soundOn: "Sound on",
     soundOff: "Sound off",
     privacy: "We use your camera to catch gifts.",
-    howTo: "After the camera is on, wave to start.",
-    playHint: "Wave your hand in the camera — or tap here",
+    howTo: "After the camera is on, wave or tap Play.",
+    playHint: "Wave your hand — or tap Play",
     startingCamera: "Starting camera…",
     cameraDenied:
       "Camera was blocked. On iPhone: Settings → Safari → Camera → Allow, then reload. On Android: tap the lock icon → Permissions → Camera → Allow, then Try again.",
@@ -22,7 +22,7 @@ const STRINGS = {
       "This page is inside an ad frame that blocks the camera. Tap Try again to open it full screen.",
     cameraArFail:
       "Camera started, but face tracking could not begin. Close other camera apps, reload, and try again over https://.",
-    coach: "Wave your hand to start.",
+    coach: "Wave your hand or tap Play to start.",
     totalScore: "Total score",
     faceLost: "Center your face to keep playing",
     loadingAr: "Loading AR…",
