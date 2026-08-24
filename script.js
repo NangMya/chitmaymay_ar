@@ -108,7 +108,7 @@ const state = {
   bagY: 0,
   bagRaf: 0,
   bagLastMs: 0,
-  previewRaf: 0,
+  bagDragUntil: 0,
   roundResults: [],
   mindarLoading: false,
   vendorsReady: false,
@@ -291,125 +291,53 @@ function fitCameraToWindow() {
 }
 
 /**
- * Keep MindAR's <video> inside #ar-scene. Moving it into the PiP (or attaching
- * the same MediaStream to a second <video>) breaks face tracking on iOS/Android
- * even when HTTPS / GitHub Pages is fine. Mirror frames onto a canvas instead.
+ * MindAR must keep decoding the camera on mobile. Opacity:0 / off-DOM mirrors
+ * often freeze frames on iOS/Android. Put the tracker <video> inside the PiP
+ * frame, and patch _resize so it updates tracking math without blowing the
+ * video up to full-screen (which broke "fit inside camera frame").
  */
 function mindarVideoEl() {
   const system = mindarSystem();
   return system && system.video ? system.video : null;
 }
 
-function ensurePreviewCanvas() {
-  if (!els.cameraPreview) {
-    return null;
-  }
-  let canvas = document.getElementById("camera-mirror");
-  if (!canvas) {
-    canvas = document.createElement("canvas");
-    canvas.id = "camera-mirror";
-    canvas.setAttribute("aria-hidden", "true");
-    els.cameraPreview.appendChild(canvas);
-  }
-  els.previewCanvas = canvas;
-  return canvas;
-}
-
-function restoreMindArVideoHome() {
-  const video = mindarVideoEl();
-  if (!video || !els.arScene) {
+function fitVideoInPreview(video) {
+  if (!video) {
     return;
-  }
-  if (video.parentElement !== els.arScene) {
-    els.arScene.appendChild(video);
   }
   video.muted = true;
   video.setAttribute("playsinline", "true");
   video.setAttribute("webkit-playsinline", "true");
   video.playsInline = true;
-  video.style.position = "absolute";
-  video.style.zIndex = "-2";
-  video.style.opacity = "";
-  video.style.inset = "";
-  video.style.maxWidth = "";
-  video.style.maxHeight = "";
-  video.style.objectFit = "";
-  video.style.objectPosition = "";
+  // MindAR sets width/height attributes to the raw camera resolution.
+  // Force CSS box fit so the feed stays clipped inside the PiP frame.
+  video.style.setProperty("position", "absolute", "important");
+  video.style.setProperty("inset", "0px", "important");
+  video.style.setProperty("top", "0px", "important");
+  video.style.setProperty("left", "0px", "important");
+  video.style.setProperty("right", "0px", "important");
+  video.style.setProperty("bottom", "0px", "important");
+  video.style.setProperty("width", "100%", "important");
+  video.style.setProperty("height", "100%", "important");
+  video.style.setProperty("max-width", "none", "important");
+  video.style.setProperty("max-height", "none", "important");
+  video.style.setProperty("object-fit", "cover", "important");
+  video.style.setProperty("object-position", "center center", "important");
+  video.style.setProperty("opacity", "1", "important");
+  video.style.setProperty("z-index", "0", "important");
+  video.style.setProperty("transform", "scaleX(-1)", "important");
+  video.style.setProperty("border-radius", "inherit", "important");
+  video.style.setProperty("pointer-events", "none", "important");
   const play = video.play();
   if (play && play.catch) {
     play.catch(() => {});
   }
 }
 
-function stopPreviewMirror() {
-  if (state.previewRaf) {
-    window.cancelAnimationFrame(state.previewRaf);
-    state.previewRaf = 0;
-  }
-}
-
-function tickPreviewMirror() {
-  state.previewRaf = window.requestAnimationFrame(tickPreviewMirror);
-  const video = mindarVideoEl();
-  const canvas = els.previewCanvas || ensurePreviewCanvas();
-  if (!video || !canvas || video.readyState < 2 || video.videoWidth < 16) {
-    return;
-  }
-  if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-  }
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    return;
-  }
-  ctx.save();
-  ctx.translate(canvas.width, 0);
-  ctx.scale(-1, 1);
-  ctx.drawImage(video, 0, 0);
-  ctx.restore();
-}
-
-function startPreviewMirror() {
-  if (!els.cameraPreview) {
-    return;
-  }
-  restoreMindArVideoHome();
-  ensurePreviewCanvas();
-  if (els.cameraFeed) {
-    els.cameraFeed.style.display = "none";
-    try {
-      els.cameraFeed.pause();
-    } catch (_err) {
-      /* ignore */
-    }
-    els.cameraFeed.srcObject = null;
-  }
-  show(els.cameraPreview, true);
-  if (!state.previewRaf) {
-    state.previewRaf = window.requestAnimationFrame(tickPreviewMirror);
-  }
-}
-
-function syncPreviewFromMindAr() {
-  startPreviewMirror();
-}
-
-function pinMindArVideoToPreview() {
-  startPreviewMirror();
-}
-
-function enablePlayWorld() {
-  sizeArContainer();
-  markVideosInline();
-  restoreMindArVideoHome();
-  const system = mindarSystem();
-  if (system && typeof system._resize === "function" && system.video && system.video.videoWidth) {
-    system._resize();
-  }
+function sizeSceneFullWindow() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
   if (els.scene) {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
     els.scene.style.position = "fixed";
     els.scene.style.top = "0px";
     els.scene.style.left = "0px";
@@ -419,7 +347,117 @@ function enablePlayWorld() {
       els.scene.resize();
     }
   }
-  startPreviewMirror();
+  if (els.arScene) {
+    els.arScene.style.width = w + "px";
+    els.arScene.style.height = h + "px";
+  }
+}
+
+function patchMindArResize() {
+  const system = mindarSystem();
+  if (!system || system.__pipResizePatched || typeof system._resize !== "function") {
+    return;
+  }
+  system._resize = function pipSafeResize() {
+    const video = this.video;
+    const container = this.container || (els && els.arScene);
+    if (!video) {
+      return;
+    }
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      video.setAttribute("width", String(video.videoWidth));
+      video.setAttribute("height", String(video.videoHeight));
+      if (this.controller && typeof this.controller.onInputResized === "function") {
+        this.controller.onInputResized(video);
+      }
+      if (this.controller && typeof this.controller.getCameraParams === "function") {
+        const params = this.controller.getCameraParams();
+        const camHost = (container && container.getElementsByTagName("a-camera")[0]) ||
+          (els.scene && els.scene.querySelector("[camera]"));
+        const camera = camHost && camHost.getObject3D && camHost.getObject3D("camera");
+        if (camera && params) {
+          camera.fov = params.fov;
+          camera.aspect = params.aspect;
+          camera.near = params.near;
+          camera.far = params.far;
+          camera.updateProjectionMatrix();
+        }
+        if (camHost) {
+          camHost.setAttribute("camera", "active", true);
+        }
+      }
+    }
+    sizeSceneFullWindow();
+    if (els.cameraPreview && els.cameraPreview.contains(video)) {
+      fitVideoInPreview(video);
+    } else if (container) {
+      const cw = container.clientWidth || window.innerWidth;
+      const ch = container.clientHeight || window.innerHeight;
+      const box = coverSize(
+        video.videoWidth || cw,
+        video.videoHeight || ch,
+        cw,
+        ch
+      );
+      video.style.position = "absolute";
+      video.style.top = box.top + "px";
+      video.style.left = box.left + "px";
+      video.style.width = box.width + "px";
+      video.style.height = box.height + "px";
+      video.style.zIndex = "-2";
+      if (this.shouldFaceUser && !this.disableFaceMirror) {
+        video.style.transform = "scaleX(-1)";
+      } else {
+        video.style.transform = "scaleX(1)";
+      }
+    }
+  };
+  system.__pipResizePatched = true;
+}
+
+function pinMindArVideoToPreview() {
+  const system = mindarSystem();
+  const video = system && system.video;
+  if (!els.cameraPreview) {
+    return;
+  }
+  patchMindArResize();
+  if (!video) {
+    return;
+  }
+  if (video.parentElement !== els.cameraPreview) {
+    els.cameraPreview.appendChild(video);
+  }
+  if (els.cameraFeed) {
+    els.cameraFeed.style.display = "none";
+    try {
+      els.cameraFeed.pause();
+    } catch (_err) {
+      /* ignore */
+    }
+    els.cameraFeed.srcObject = null;
+  }
+  fitVideoInPreview(video);
+  show(els.cameraPreview, true);
+  if (typeof system._resize === "function") {
+    system._resize();
+  }
+}
+
+function syncPreviewFromMindAr() {
+  pinMindArVideoToPreview();
+}
+
+function enablePlayWorld() {
+  sizeArContainer();
+  markVideosInline();
+  patchMindArResize();
+  const system = mindarSystem();
+  if (system && typeof system._resize === "function" && system.video && system.video.videoWidth) {
+    system._resize();
+  }
+  sizeSceneFullWindow();
+  pinMindArVideoToPreview();
 }
 
 function revealAr() {
@@ -430,11 +468,10 @@ function revealAr() {
 }
 
 function showCameraPreview() {
-  startPreviewMirror();
+  pinMindArVideoToPreview();
 }
 
 function hideCameraPreview() {
-  stopPreviewMirror();
   show(els.cameraPreview, false);
   if (els.cameraFeed) {
     try {
@@ -524,7 +561,11 @@ function waveVideo() {
   if (els.cameraFeed && els.cameraFeed.readyState >= 2 && els.cameraFeed.videoWidth >= 16) {
     return els.cameraFeed;
   }
-  return document.querySelector("#ar-scene video") || document.querySelector("video");
+  const inPreview = els.cameraPreview && els.cameraPreview.querySelector("video");
+  if (inPreview && inPreview.readyState >= 2 && inPreview.videoWidth >= 16) {
+    return inPreview;
+  }
+  return document.querySelector("video");
 }
 
 function sampleHandMotion() {
@@ -651,13 +692,31 @@ function faceCameraPoint() {
 }
 
 function faceNdc() {
+  ensureVectors();
+  const camEl = els.scene && els.scene.querySelector("[camera]");
+  const camera = camEl && camEl.getObject3D && camEl.getObject3D("camera");
+
+  // Prefer the live face anchor MindAR already updates each frame.
+  if (
+    camera &&
+    faceWorld &&
+    cameraWorld &&
+    els.faceTarget &&
+    els.faceTarget.object3D &&
+    els.faceTarget.object3D.visible
+  ) {
+    els.faceTarget.object3D.updateWorldMatrix(true, false);
+    els.faceTarget.object3D.getWorldPosition(faceWorld);
+    cameraWorld.copy(faceWorld).project(camera);
+    if (Number.isFinite(cameraWorld.x) && Number.isFinite(cameraWorld.y)) {
+      return { x: cameraWorld.x, y: cameraWorld.y };
+    }
+  }
+
   const point = faceCameraPoint();
   if (!point) {
     return null;
   }
-  ensureVectors();
-  const camEl = els.scene && els.scene.querySelector("[camera]");
-  const camera = camEl && camEl.getObject3D && camEl.getObject3D("camera");
   if (camera && faceWorld && cameraWorld && typeof cameraWorld.project === "function") {
     faceWorld.set(point.x, point.y, point.z);
     cameraWorld.copy(faceWorld).project(camera);
@@ -683,14 +742,25 @@ function faceBagTarget() {
   const maxX = window.innerWidth - bagW * 0.5 - 12;
   const minY = bagH * 0.5 + 64;
   const maxY = window.innerHeight - bagH * 0.5 - 16;
-  const u = Math.max(0, Math.min(1, 0.5 + ndc.x * 0.58));
-  const v = Math.max(-1, Math.min(1, ndc.y));
+  // Wider travel so face lean is obvious on phones.
+  const u = Math.max(0, Math.min(1, 0.5 + ndc.x * 0.75));
+  const v = Math.max(-1, Math.min(1, -ndc.y));
   return {
     x: minX + u * (maxX - minX),
-    y: window.innerHeight * 0.86 + v * window.innerHeight * 0.05,
+    y: window.innerHeight * 0.84 + v * window.innerHeight * 0.14,
     minY,
     maxY,
   };
+}
+
+function applyBagTransform() {
+  if (!els.screenBag) {
+    return;
+  }
+  els.screenBag.style.left = "0px";
+  els.screenBag.style.top = "0px";
+  els.screenBag.style.bottom = "auto";
+  els.screenBag.style.transform = `translate3d(${state.bagX}px, ${state.bagY}px, 0) translate(-50%, -50%)`;
 }
 
 function tickBagSprite() {
@@ -700,21 +770,38 @@ function tickBagSprite() {
   const now = performance.now();
   const dt = Math.min(48, now - (state.bagLastMs || now));
   state.bagLastMs = now;
+  const dragging = now < state.bagDragUntil;
   const point = faceBagTarget();
-  if (!point) {
+  if (!point && !dragging) {
     return;
   }
-  const follow = 1 - Math.exp(-dt / GAME.bagFollowMs);
-  const minY = point.minY;
-  const maxY = point.maxY;
-  const targetX = point.x;
-  const targetY = Math.max(minY, Math.min(maxY, point.y));
-  state.bagX += (targetX - state.bagX) * follow;
-  state.bagY += (targetY - state.bagY) * follow;
-  els.screenBag.style.left = "0px";
-  els.screenBag.style.top = "0px";
-  els.screenBag.style.bottom = "auto";
-  els.screenBag.style.transform = `translate3d(${state.bagX}px, ${state.bagY}px, 0) translate(-50%, -50%)`;
+  if (point && !dragging) {
+    const follow = 1 - Math.exp(-dt / GAME.bagFollowMs);
+    const targetX = point.x;
+    const targetY = Math.max(point.minY, Math.min(point.maxY, point.y));
+    state.bagX += (targetX - state.bagX) * follow;
+    state.bagY += (targetY - state.bagY) * follow;
+  }
+  applyBagTransform();
+}
+
+function moveBagToPointer(clientX, clientY) {
+  if (!els.screenBag || els.screenBag.hidden) {
+    return;
+  }
+  if (state.phase !== "playing" && state.phase !== "countdown") {
+    return;
+  }
+  const bagW = els.screenBag.offsetWidth || 156;
+  const bagH = els.screenBag.offsetHeight || 96;
+  const minX = bagW * 0.5 + 12;
+  const maxX = window.innerWidth - bagW * 0.5 - 12;
+  const minY = window.innerHeight * 0.55;
+  const maxY = window.innerHeight - bagH * 0.5 - 16;
+  state.bagX = Math.max(minX, Math.min(maxX, clientX));
+  state.bagY = Math.max(minY, Math.min(maxY, clientY));
+  state.bagDragUntil = performance.now() + 500;
+  applyBagTransform();
 }
 
 function registerGameComponents() {
@@ -765,6 +852,7 @@ function startCameraSystem() {
     showDenied(t("cameraArFail"));
     return true;
   }
+  patchMindArResize();
   revealAr();
   try {
     system.start();
@@ -1384,10 +1472,13 @@ function tickDebug(gift) {
     const rect = gift.el.getBoundingClientRect();
     extra = `  bag:${Math.round(bag.left)} gift:${Math.round(rect.left)}`;
   }
+  const hasEstimate = !!faceEstimate();
   els.debug.textContent =
     `Phase 4  camera:${state.cameraStarted ? "on" : "off"}  face:${
       state.faceLocked ? "LOCK" : "lost"
-    }  phase:${state.phase}${state.pausedByFace ? " PAUSED" : ""}${extra}`;
+    }  est:${hasEstimate ? "yes" : "no"}  bag:${Math.round(state.bagX)},${Math.round(
+      state.bagY
+    )}  phase:${state.phase}${state.pausedByFace ? " PAUSED" : ""}${extra}`;
 }
 
 function tick(delta) {
@@ -1713,6 +1804,38 @@ function bindUi() {
     }
     window.requestAnimationFrame(enablePlayWorld);
   });
+
+  let bagPointerId = null;
+  const onBagPointer = (ev) => {
+    if (ev.pointerType === "mouse" && ev.buttons === 0 && ev.type === "pointermove") {
+      return;
+    }
+    if (state.phase !== "playing" && state.phase !== "countdown") {
+      return;
+    }
+    if (!els.screenBag || els.screenBag.hidden) {
+      return;
+    }
+    if (ev.type === "pointerdown") {
+      bagPointerId = ev.pointerId;
+    } else if (bagPointerId !== null && ev.pointerId !== bagPointerId) {
+      return;
+    }
+    if (ev.type === "pointerup" || ev.type === "pointercancel") {
+      bagPointerId = null;
+      return;
+    }
+    // Only drag in the lower play area so UI taps still work.
+    if (ev.clientY < window.innerHeight * 0.45) {
+      return;
+    }
+    ev.preventDefault();
+    moveBagToPointer(ev.clientX, ev.clientY);
+  };
+  window.addEventListener("pointerdown", onBagPointer, { passive: false });
+  window.addEventListener("pointermove", onBagPointer, { passive: false });
+  window.addEventListener("pointerup", onBagPointer);
+  window.addEventListener("pointercancel", onBagPointer);
 }
 
 async function boot() {
