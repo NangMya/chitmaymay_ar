@@ -108,6 +108,7 @@ const state = {
   bagY: 0,
   bagRaf: 0,
   bagLastMs: 0,
+  previewRaf: 0,
   roundResults: [],
   mindarLoading: false,
   vendorsReady: false,
@@ -289,54 +290,119 @@ function fitCameraToWindow() {
   applyWindowCover();
 }
 
-function syncPreviewFromMindAr() {
+/**
+ * Keep MindAR's <video> inside #ar-scene. Moving it into the PiP (or attaching
+ * the same MediaStream to a second <video>) breaks face tracking on iOS/Android
+ * even when HTTPS / GitHub Pages is fine. Mirror frames onto a canvas instead.
+ */
+function mindarVideoEl() {
   const system = mindarSystem();
-  const stream =
-    (system && system.video && system.video.srcObject) || getPrimedStream();
-  if (!els.cameraFeed || !stream) {
-    return;
-  }
-  attachStreamToVideo(els.cameraFeed, stream);
-  show(els.cameraPreview, true);
+  return system && system.video ? system.video : null;
 }
 
-function pinMindArVideoToPreview() {
-  const system = mindarSystem();
-  const video = system && system.video;
-  if (!video || !els.cameraPreview) {
-    syncPreviewFromMindAr();
+function ensurePreviewCanvas() {
+  if (!els.cameraPreview) {
+    return null;
+  }
+  let canvas = document.getElementById("camera-mirror");
+  if (!canvas) {
+    canvas = document.createElement("canvas");
+    canvas.id = "camera-mirror";
+    canvas.setAttribute("aria-hidden", "true");
+    els.cameraPreview.appendChild(canvas);
+  }
+  els.previewCanvas = canvas;
+  return canvas;
+}
+
+function restoreMindArVideoHome() {
+  const video = mindarVideoEl();
+  if (!video || !els.arScene) {
     return;
   }
-  els.cameraPreview.appendChild(video);
+  if (video.parentElement !== els.arScene) {
+    els.arScene.appendChild(video);
+  }
   video.muted = true;
   video.setAttribute("playsinline", "true");
   video.setAttribute("webkit-playsinline", "true");
+  video.playsInline = true;
   video.style.position = "absolute";
-  video.style.inset = "0px";
-  video.style.top = "0px";
-  video.style.left = "0px";
-  video.style.width = "100%";
-  video.style.height = "100%";
-  video.style.objectFit = "cover";
-  video.style.objectPosition = "center";
-  video.style.opacity = "1";
-  video.style.zIndex = "0";
-  video.style.maxWidth = "none";
-  video.style.maxHeight = "none";
-  video.style.transform = "scaleX(-1)";
+  video.style.zIndex = "-2";
+  video.style.opacity = "";
+  video.style.inset = "";
+  video.style.maxWidth = "";
+  video.style.maxHeight = "";
+  video.style.objectFit = "";
+  video.style.objectPosition = "";
   const play = video.play();
   if (play && play.catch) {
     play.catch(() => {});
   }
-  show(els.cameraPreview, true);
+}
+
+function stopPreviewMirror() {
+  if (state.previewRaf) {
+    window.cancelAnimationFrame(state.previewRaf);
+    state.previewRaf = 0;
+  }
+}
+
+function tickPreviewMirror() {
+  state.previewRaf = window.requestAnimationFrame(tickPreviewMirror);
+  const video = mindarVideoEl();
+  const canvas = els.previewCanvas || ensurePreviewCanvas();
+  if (!video || !canvas || video.readyState < 2 || video.videoWidth < 16) {
+    return;
+  }
+  if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return;
+  }
+  ctx.save();
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0);
+  ctx.restore();
+}
+
+function startPreviewMirror() {
+  if (!els.cameraPreview) {
+    return;
+  }
+  restoreMindArVideoHome();
+  ensurePreviewCanvas();
   if (els.cameraFeed) {
     els.cameraFeed.style.display = "none";
+    try {
+      els.cameraFeed.pause();
+    } catch (_err) {
+      /* ignore */
+    }
+    els.cameraFeed.srcObject = null;
   }
+  show(els.cameraPreview, true);
+  if (!state.previewRaf) {
+    state.previewRaf = window.requestAnimationFrame(tickPreviewMirror);
+  }
+}
+
+function syncPreviewFromMindAr() {
+  startPreviewMirror();
+}
+
+function pinMindArVideoToPreview() {
+  startPreviewMirror();
 }
 
 function enablePlayWorld() {
   sizeArContainer();
   markVideosInline();
+  restoreMindArVideoHome();
   const system = mindarSystem();
   if (system && typeof system._resize === "function" && system.video && system.video.videoWidth) {
     system._resize();
@@ -353,7 +419,7 @@ function enablePlayWorld() {
       els.scene.resize();
     }
   }
-  pinMindArVideoToPreview();
+  startPreviewMirror();
 }
 
 function revealAr() {
@@ -364,18 +430,18 @@ function revealAr() {
 }
 
 function showCameraPreview() {
-  const stream = getPrimedStream();
-  if (!els.cameraFeed || !stream) {
-    return;
-  }
-  attachStreamToVideo(els.cameraFeed, stream);
-  show(els.cameraPreview, true);
+  startPreviewMirror();
 }
 
 function hideCameraPreview() {
+  stopPreviewMirror();
   show(els.cameraPreview, false);
   if (els.cameraFeed) {
-    els.cameraFeed.pause();
+    try {
+      els.cameraFeed.pause();
+    } catch (_err) {
+      /* ignore */
+    }
     els.cameraFeed.srcObject = null;
   }
 }
@@ -451,18 +517,14 @@ waveCanvas.height = 54;
 const waveCtx = waveCanvas.getContext("2d", { willReadFrequently: true }) || waveCanvas.getContext("2d");
 
 function waveVideo() {
-  const inPreview = els.cameraPreview && els.cameraPreview.querySelector("video");
-  if (inPreview && inPreview.readyState >= 2 && inPreview.videoWidth >= 16) {
-    return inPreview;
+  const systemVideo = mindarVideoEl();
+  if (systemVideo && systemVideo.readyState >= 2 && systemVideo.videoWidth >= 16) {
+    return systemVideo;
   }
   if (els.cameraFeed && els.cameraFeed.readyState >= 2 && els.cameraFeed.videoWidth >= 16) {
     return els.cameraFeed;
   }
-  const system = mindarSystem();
-  if (system && system.video && system.video.readyState >= 2 && system.video.videoWidth >= 16) {
-    return system.video;
-  }
-  return document.querySelector("video");
+  return document.querySelector("#ar-scene video") || document.querySelector("video");
 }
 
 function sampleHandMotion() {

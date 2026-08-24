@@ -136,11 +136,23 @@ button:active {
 }
 
 #camera-preview video,
-#camera-feed {
+#camera-feed,
+#camera-mirror {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+#camera-preview video,
+#camera-feed {
   transform: scaleX(-1);
+}
+
+#camera-mirror {
+  display: block;
+  transform: none;
 }
 
 .title {
