@@ -37,10 +37,10 @@ const GAME = {
   bagFollowMs: 45,
   collectMs: 420,
   fallPxPerSec: 520,
-  // ~30s / 0.45s ≈ 66 theoretical; spawnMax caps usable gifts per round.
-  spawnEveryMs: [450, 400, 350],
-  spawnJitterMs: 120,
-  spawnMax: [42, 48, 54],
+  // Round 1: 25 @ 1.0s | Round 2: 30 @ 1.0s | Round 3: 38 @ 0.75s
+  spawnEveryMs: [1000, 1000, 750],
+  spawnJitterMs: 0,
+  spawnMax: [25, 30, 38],
   minSpawnXGapPct: 14,
   maxActiveGifts: 7,
   items: {

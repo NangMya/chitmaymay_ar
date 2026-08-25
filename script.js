@@ -1205,7 +1205,7 @@ function spawnGift() {
 
 function scheduleNextSpawn(baseMs) {
   const jitter = GAME.spawnJitterMs || 0;
-  state.nextSpawnMs = Math.max(280, baseMs + Math.random() * jitter);
+  state.nextSpawnMs = Math.max(baseMs, baseMs + Math.random() * jitter);
   state.spawnAccMs = 0;
 }
 
@@ -1244,7 +1244,7 @@ function tickGiftSpawns(dtMs) {
   const spawnEvery = GAME.spawnEveryMs[state.round - 1] || GAME.spawnEveryMs[0];
   const spawnMax = GAME.spawnMax[state.round - 1] || GAME.spawnMax[0];
   if (!state.nextSpawnMs) {
-    scheduleNextSpawn(Math.min(spawnEvery, 500));
+    scheduleNextSpawn(spawnEvery);
   }
   state.spawnAccMs += dtMs;
   if (state.roundSpawns >= spawnMax) {
@@ -1257,9 +1257,9 @@ function tickGiftSpawns(dtMs) {
     state.roundSpawns += 1;
     scheduleNextSpawn(spawnEvery);
   } else {
-    // Screen full or no items — retry soon instead of waiting a full interval.
+    // Screen full — retry quickly without burning a spawn slot.
     state.spawnAccMs = 0;
-    state.nextSpawnMs = 400;
+    state.nextSpawnMs = Math.min(250, spawnEvery);
   }
 }
 
@@ -1684,7 +1684,7 @@ function tick(delta) {
       hideStatus();
       setPhase("playing");
       state.spawnAccMs = 0;
-      state.nextSpawnMs = 80;
+      state.nextSpawnMs = GAME.spawnEveryMs[state.round - 1] || 1000;
       state.pausedByFace = false;
       startGiftLoop();
     }
