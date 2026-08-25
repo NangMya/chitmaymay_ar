@@ -1205,7 +1205,7 @@ function spawnGift() {
 
 function scheduleNextSpawn(baseMs) {
   const jitter = GAME.spawnJitterMs || 0;
-  state.nextSpawnMs = Math.max(800, baseMs + Math.random() * jitter);
+  state.nextSpawnMs = Math.max(420, baseMs + Math.random() * jitter);
   state.spawnAccMs = 0;
 }
 
@@ -1247,7 +1247,7 @@ function tickGiftSpawns(dtMs) {
   const spawnEvery = GAME.spawnEveryMs[state.round - 1] || GAME.spawnEveryMs[0];
   const spawnMax = GAME.spawnMax[state.round - 1] || GAME.spawnMax[0];
   if (!state.nextSpawnMs) {
-    scheduleNextSpawn(Math.min(spawnEvery, 900));
+    scheduleNextSpawn(Math.min(spawnEvery, 500));
   }
   state.spawnAccMs += dtMs;
   if (state.roundSpawns >= spawnMax) {
@@ -1687,7 +1687,7 @@ function tick(delta) {
       hideStatus();
       setPhase("playing");
       state.spawnAccMs = 0;
-      state.nextSpawnMs = 450;
+      state.nextSpawnMs = 180;
       state.pausedByFace = false;
       startGiftLoop();
     }
