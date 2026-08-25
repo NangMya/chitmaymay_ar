@@ -98,6 +98,7 @@ const state = {
   countdownLeftMs: 0,
   spawnAccMs: 0,
   nextSpawnMs: 0,
+  nextSpawnAt: 0,
   giftRaf: 0,
   giftLastMs: 0,
   roundSpawns: 0,
@@ -1210,17 +1211,21 @@ function spawnGift() {
     collecting: false,
     xPx,
     yPx,
-    sway: (Math.random() - 0.5) * 4,
-    phase: Math.random() * Math.PI * 2,
+    sway: 0,
+    phase: 0,
     w: 0,
     h: 0,
   });
   return true;
 }
 
-function scheduleNextSpawn(baseMs) {
+function scheduleNextSpawn(baseMs, fromMs) {
+  const interval = Math.max(0, baseMs || 0);
   const jitter = GAME.spawnJitterMs || 0;
-  state.nextSpawnMs = Math.max(baseMs, baseMs + Math.random() * jitter);
+  const gap = interval + Math.random() * jitter;
+  // Wall-clock schedule — independent of AR frame rate.
+  state.nextSpawnAt = (fromMs || performance.now()) + gap;
+  state.nextSpawnMs = gap;
   state.spawnAccMs = 0;
 }
 
@@ -1229,20 +1234,23 @@ function startGiftLoop() {
     return;
   }
   state.giftLastMs = performance.now();
+  if (!state.nextSpawnAt) {
+    scheduleNextSpawn(120, state.giftLastMs);
+  }
   const loop = (now) => {
     state.giftRaf = window.requestAnimationFrame(loop);
     if (state.phase !== "playing" || state.hidden) {
       state.giftLastMs = now;
       return;
     }
-    // Cap to ~1 frame so hitch recovery doesn't teleport gifts.
-    const dtMs = Math.min(22, Math.max(0, now - state.giftLastMs));
+    const rawDt = Math.max(0, now - state.giftLastMs);
     state.giftLastMs = now;
-    if (dtMs < 0.5) {
-      return;
+    // Motion uses real time (capped) so falls stay smooth under AR load.
+    const moveDt = Math.min(48, rawDt);
+    if (moveDt >= 0.5) {
+      tickGiftMotion(moveDt);
     }
-    tickGiftSpawns(dtMs);
-    tickGiftMotion(dtMs);
+    tickGiftSpawnsAt(now);
   };
   state.giftRaf = window.requestAnimationFrame(loop);
 }
@@ -1254,31 +1262,32 @@ function stopGiftLoop() {
   }
 }
 
-function tickGiftSpawns(dtMs) {
+function tickGiftSpawnsAt(now) {
   const spawnEvery = GAME.spawnEveryMs[state.round - 1] || GAME.spawnEveryMs[0];
   const spawnMax = GAME.spawnMax[state.round - 1] || GAME.spawnMax[0];
-  if (!state.nextSpawnMs) {
-    scheduleNextSpawn(spawnEvery);
+  if (!state.nextSpawnAt) {
+    scheduleNextSpawn(120, now);
   }
-  state.spawnAccMs += dtMs;
   if (state.roundSpawns >= spawnMax) {
     return;
   }
-  if (state.spawnAccMs < state.nextSpawnMs) {
-    return;
-  }
-  if (spawnGift()) {
-    state.roundSpawns += 1;
-    scheduleNextSpawn(spawnEvery);
-  } else {
-    // Screen full — retry quickly without burning a spawn slot.
-    state.spawnAccMs = 0;
-    state.nextSpawnMs = Math.min(250, spawnEvery);
+  // Catch up if we fell behind (slow frames) — never skip the cadence forever.
+  let guard = 0;
+  while (now >= state.nextSpawnAt && state.roundSpawns < spawnMax && guard < 3) {
+    guard += 1;
+    if (spawnGift()) {
+      state.roundSpawns += 1;
+      scheduleNextSpawn(spawnEvery, state.nextSpawnAt);
+    } else {
+      // Screen full — try again shortly without consuming a spawn slot.
+      state.nextSpawnAt = now + 200;
+      break;
+    }
   }
 }
 
 function tickGiftMotion(dtMs) {
-  const fallBase = (GAME.fallPxPerSec || 420) * (dtMs / 1000);
+  const fallBase = (GAME.fallPxPerSec || 440) * (dtMs / 1000);
   const bottomLimit = window.innerHeight + 120;
   for (let i = state.gifts.length - 1; i >= 0; i -= 1) {
     const gift = state.gifts[i];
@@ -1296,13 +1305,9 @@ function tickGiftMotion(dtMs) {
       continue;
     }
     gift.yPx += fallBase * gift.speed;
-    // Tiny sway only — large sway reads as stutter on mobile.
-    gift.phase = (gift.phase || 0) + dtMs * 0.002;
-    const swayX = Math.sin(gift.phase) * (gift.sway || 0);
-    const drawX = gift.xPx + swayX;
     gift.el.style.transform =
-      "translate3d(" + drawX + "px," + gift.yPx + "px,0) translate(-50%,0)";
-    if (isCatch(gift, drawX)) {
+      "translate3d(" + gift.xPx + "px," + gift.yPx + "px,0) translate(-50%,0)";
+    if (isCatch(gift, gift.xPx)) {
       catchGift(gift);
       continue;
     }
@@ -1410,6 +1415,7 @@ async function beginRound() {
   state.countdownLeftMs = GAME.countdownMs;
   state.spawnAccMs = 0;
   state.nextSpawnMs = 0;
+  state.nextSpawnAt = 0;
   state.roundSpawns = 0;
   state.pausedByFace = false;
   state.faceLostMs = 0;
@@ -1700,9 +1706,10 @@ function tick(delta) {
       hideStatus();
       setPhase("playing");
       state.spawnAccMs = 0;
-      // Keep exact round cadence: R1/R2 every 1.0s, R3 every 0.75s.
-      state.nextSpawnMs = GAME.spawnEveryMs[state.round - 1] || 1000;
+      state.roundSpawns = 0;
       state.pausedByFace = false;
+      // First gift ~0.12s after countdown; then R1/R2 every 1s, R3 every 0.75s.
+      scheduleNextSpawn(120, performance.now());
       startGiftLoop();
     }
     tickDebug(state.gifts[0]);
