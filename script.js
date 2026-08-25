@@ -1205,7 +1205,7 @@ function spawnGift() {
 
 function scheduleNextSpawn(baseMs) {
   const jitter = GAME.spawnJitterMs || 0;
-  state.nextSpawnMs = Math.max(420, baseMs + Math.random() * jitter);
+  state.nextSpawnMs = Math.max(280, baseMs + Math.random() * jitter);
   state.spawnAccMs = 0;
 }
 
@@ -1220,16 +1220,13 @@ function startGiftLoop() {
       state.giftLastMs = now;
       return;
     }
-    // Face-lost pauses motion, but keep the loop alive so play resumes cleanly.
-    if (state.pausedByFace) {
-      state.giftLastMs = now;
-      return;
-    }
-    const dtMs = Math.min(34, Math.max(0, now - state.giftLastMs));
+    const dtMs = Math.min(50, Math.max(0, now - state.giftLastMs));
     state.giftLastMs = now;
     if (dtMs < 1) {
       return;
     }
+    // Keep spawning/falling even if the face hint is showing — otherwise
+    // mobile face flicker makes the round unbeatable (only 1–2 gifts in 30s).
     tickGiftSpawns(dtMs);
     tickGiftMotion(dtMs);
   };
@@ -1321,7 +1318,7 @@ function isCatch(gift, drawX) {
   const gy = gift.yPx + gift.h * 0.5;
   const bx = state.bagX;
   const by = state.bagY;
-  return Math.abs(gx - bx) <= bagW * 0.42 && Math.abs(gy - by) <= bagH * 0.5;
+  return Math.abs(gx - bx) <= bagW * 0.5 && Math.abs(gy - by) <= bagH * 0.58;
 }
 
 function catchGift(gift) {
@@ -1602,7 +1599,8 @@ function countFlips(values, minDelta) {
 }
 
 function tickFacePause(faceVisible, delta) {
-  // Only pause during active play — never freeze the countdown or gift startup.
+  // Soft UX hint only. Never pause the timer or gift flow — that made round 1
+  // drop only a couple of items on mobile when tracking flickered.
   if (state.phase !== "playing") {
     state.pausedByFace = false;
     state.faceLostMs = 0;
@@ -1625,7 +1623,6 @@ function tickFacePause(faceVisible, delta) {
     }
     state.pausedByFace = true;
     show(els.faceLost, true);
-    return true;
   }
   return false;
 }
@@ -1687,7 +1684,7 @@ function tick(delta) {
       hideStatus();
       setPhase("playing");
       state.spawnAccMs = 0;
-      state.nextSpawnMs = 180;
+      state.nextSpawnMs = 80;
       state.pausedByFace = false;
       startGiftLoop();
     }
@@ -1711,11 +1708,7 @@ function tick(delta) {
   }
 
   startGiftLoop();
-  // Face lost pauses timer + gift motion; countdown/startup are never blocked.
-  if (tickFacePause(faceVisible, delta)) {
-    tickDebug(state.gifts[0]);
-    return;
-  }
+  tickFacePause(faceVisible, delta);
 
   state.roundLeftMs -= delta;
   updateTimerUi();
