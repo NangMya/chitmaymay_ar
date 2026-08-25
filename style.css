@@ -506,6 +506,13 @@ body.is-playing .decor {
   backface-visibility: hidden;
 }
 
+body[data-phase="playing"] #screen-bag,
+body[data-phase="countdown"] #screen-bag {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+}
+
 #falling-layer {
   position: fixed;
   inset: 0;

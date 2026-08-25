@@ -512,8 +512,9 @@ function bindSceneEvents() {
 }
 
 function showBag() {
+  stopBagTrack();
   state.bagX = window.innerWidth * 0.5;
-  state.bagY = window.innerHeight * 0.86;
+  state.bagY = window.innerHeight * 0.82;
   show(els.screenBag, true);
   if (els.screenBag) {
     applyBagTransform();
@@ -708,12 +709,14 @@ function landmarkTranslation(index) {
   }
   try {
     const matrix = controller.getLandmarkMatrix(index);
-    if (!matrix) {
+    if (!matrix || matrix.length < 12) {
       return null;
     }
-    const x = matrix[3];
-    const y = matrix[7];
-    const z = matrix[11];
+    // MindAR returns row-major; translation is [3], [7], [11].
+    // Also accept column-major just in case.
+    const x = Number.isFinite(matrix[3]) ? matrix[3] : matrix[12];
+    const y = Number.isFinite(matrix[7]) ? matrix[7] : matrix[13];
+    const z = Number.isFinite(matrix[11]) ? matrix[11] : matrix[14];
     if (![x, y, z].every(Number.isFinite)) {
       return null;
     }
@@ -724,15 +727,43 @@ function landmarkTranslation(index) {
 }
 
 function faceCameraPoint() {
-  return landmarkTranslation(0) || landmarkTranslation(GAME.mouthAnchor);
+  return (
+    landmarkTranslation(GAME.mouthAnchor) ||
+    landmarkTranslation(1) ||
+    landmarkTranslation(0)
+  );
 }
 
+/**
+ * Map face tracking → NDC-like coords in roughly [-1, 1].
+ * Prefer direct landmark math over camera.project (more reliable after PiP resize).
+ */
 function faceNdc() {
+  const point = faceCameraPoint();
+  if (point) {
+    const depth = Math.max(0.2, Math.abs(point.z) || 0.5);
+    return {
+      // Flip X for mirrored selfie preview so lean direction feels natural.
+      x: (-point.x / depth) * 1.35,
+      y: (point.y / depth) * 1.1,
+    };
+  }
+
+  const estimate = faceEstimate();
+  if (estimate && estimate.faceMatrix && estimate.faceMatrix.length >= 12) {
+    const m = estimate.faceMatrix;
+    const x = m[3];
+    const y = m[7];
+    const z = Math.max(0.2, Math.abs(m[11]) || 0.5);
+    if ([x, y, z].every(Number.isFinite)) {
+      return { x: (-x / z) * 1.35, y: (y / z) * 1.1 };
+    }
+  }
+
+  // Last resort: world position of the MindAR face anchor.
   ensureVectors();
   const camEl = els.scene && els.scene.querySelector("[camera]");
   const camera = camEl && camEl.getObject3D && camEl.getObject3D("camera");
-
-  // Prefer the live face anchor MindAR already updates each frame.
   if (
     camera &&
     faceWorld &&
@@ -745,26 +776,10 @@ function faceNdc() {
     els.faceTarget.object3D.getWorldPosition(faceWorld);
     cameraWorld.copy(faceWorld).project(camera);
     if (Number.isFinite(cameraWorld.x) && Number.isFinite(cameraWorld.y)) {
-      return { x: cameraWorld.x, y: cameraWorld.y };
+      return { x: -cameraWorld.x, y: cameraWorld.y };
     }
   }
-
-  const point = faceCameraPoint();
-  if (!point) {
-    return null;
-  }
-  if (camera && faceWorld && cameraWorld && typeof cameraWorld.project === "function") {
-    faceWorld.set(point.x, point.y, point.z);
-    cameraWorld.copy(faceWorld).project(camera);
-    if (Number.isFinite(cameraWorld.x) && Number.isFinite(cameraWorld.y)) {
-      return { x: cameraWorld.x, y: cameraWorld.y };
-    }
-  }
-  const depth = Math.max(0.25, Math.abs(point.z));
-  return {
-    x: point.x / depth,
-    y: point.y / depth,
-  };
+  return null;
 }
 
 function faceBagTarget() {
@@ -772,18 +787,17 @@ function faceBagTarget() {
   if (!ndc) {
     return null;
   }
-  const bagW = els.screenBag.offsetWidth || 156;
-  const bagH = els.screenBag.offsetHeight || 96;
-  const minX = bagW * 0.5 + 12;
-  const maxX = window.innerWidth - bagW * 0.5 - 12;
-  const minY = bagH * 0.5 + 64;
-  const maxY = window.innerHeight - bagH * 0.5 - 16;
-  // Wider travel so face lean is obvious on phones.
-  const u = Math.max(0, Math.min(1, 0.5 + ndc.x * 0.75));
-  const v = Math.max(-1, Math.min(1, -ndc.y));
+  const bagW = (els.screenBag && els.screenBag.offsetWidth) || 156;
+  const bagH = (els.screenBag && els.screenBag.offsetHeight) || 96;
+  const minX = bagW * 0.5 + 8;
+  const maxX = window.innerWidth - bagW * 0.5 - 8;
+  const minY = window.innerHeight * 0.62;
+  const maxY = window.innerHeight - bagH * 0.45 - 8;
+  const u = Math.max(0, Math.min(1, 0.5 + ndc.x * 0.85));
+  const v = Math.max(-1, Math.min(1, ndc.y));
   return {
     x: minX + u * (maxX - minX),
-    y: window.innerHeight * 0.84 + v * window.innerHeight * 0.14,
+    y: window.innerHeight * 0.82 + v * window.innerHeight * 0.12,
     minY,
     maxY,
   };
@@ -812,7 +826,7 @@ function tickBagSprite() {
     return;
   }
   if (point && !dragging) {
-    const follow = 1 - Math.exp(-dt / GAME.bagFollowMs);
+    const follow = 1 - Math.exp(-dt / Math.max(16, GAME.bagFollowMs || 45));
     const targetX = point.x;
     const targetY = Math.max(point.minY, Math.min(point.maxY, point.y));
     state.bagX += (targetX - state.bagX) * follow;
@@ -830,13 +844,13 @@ function moveBagToPointer(clientX, clientY) {
   }
   const bagW = els.screenBag.offsetWidth || 156;
   const bagH = els.screenBag.offsetHeight || 96;
-  const minX = bagW * 0.5 + 12;
-  const maxX = window.innerWidth - bagW * 0.5 - 12;
+  const minX = bagW * 0.5 + 8;
+  const maxX = window.innerWidth - bagW * 0.5 - 8;
   const minY = window.innerHeight * 0.55;
-  const maxY = window.innerHeight - bagH * 0.5 - 16;
+  const maxY = window.innerHeight - bagH * 0.4 - 8;
   state.bagX = Math.max(minX, Math.min(maxX, clientX));
   state.bagY = Math.max(minY, Math.min(maxY, clientY));
-  state.bagDragUntil = performance.now() + 500;
+  state.bagDragUntil = performance.now() + 650;
   applyBagTransform();
 }
 
@@ -1229,6 +1243,7 @@ function startGiftLoop() {
     // mobile face flicker makes the round unbeatable (only 1–2 gifts in 30s).
     tickGiftSpawns(dtMs);
     tickGiftMotion(dtMs);
+    tickBagSprite();
   };
   state.giftRaf = window.requestAnimationFrame(loop);
 }
@@ -1949,6 +1964,9 @@ function bindUi() {
     if (!els.screenBag || els.screenBag.hidden) {
       return;
     }
+    const onBag =
+      ev.target === els.screenBag ||
+      (els.screenBag.contains && els.screenBag.contains(ev.target));
     if (ev.type === "pointerdown") {
       bagPointerId = ev.pointerId;
     } else if (bagPointerId !== null && ev.pointerId !== bagPointerId) {
@@ -1958,11 +1976,13 @@ function bindUi() {
       bagPointerId = null;
       return;
     }
-    // Only drag in the lower play area so UI taps still work.
-    if (ev.clientY < window.innerHeight * 0.45) {
+    // Drag on the bag itself, or anywhere in the lower play field.
+    if (!onBag && ev.clientY < window.innerHeight * 0.42) {
       return;
     }
-    ev.preventDefault();
+    if (ev.cancelable) {
+      ev.preventDefault();
+    }
     moveBagToPointer(ev.clientX, ev.clientY);
   };
   window.addEventListener("pointerdown", onBagPointer, { passive: false });
