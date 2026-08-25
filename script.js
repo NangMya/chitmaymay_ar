@@ -101,6 +101,10 @@ const state = {
   nextSpawnAt: 0,
   giftRaf: 0,
   giftLastMs: 0,
+  gameRaf: 0,
+  gameLastMs: 0,
+  giftsActive: false,
+  bagTrackActive: false,
   roundSpawns: 0,
   lastSpawnX: 0,
   gifts: [],
@@ -112,9 +116,14 @@ const state = {
   pausedByFace: false,
   bagX: 0,
   bagY: 0,
+  bagW: 156,
+  bagH: 96,
   bagRaf: 0,
   bagLastMs: 0,
   bagDragUntil: 0,
+  faceSmoothX: 0,
+  faceSmoothY: 0,
+  faceSmoothReady: false,
   roundResults: [],
   mindarLoading: false,
   vendorsReady: false,
@@ -512,12 +521,26 @@ function bindSceneEvents() {
   });
 }
 
+function bagBaseY() {
+  return Math.max(0.7, Math.min(0.94, GAME.bagBaseY || 0.88));
+}
+
+function refreshBagMetrics() {
+  if (!els.screenBag) {
+    return;
+  }
+  state.bagW = els.screenBag.offsetWidth || state.bagW || 156;
+  state.bagH = els.screenBag.offsetHeight || state.bagH || 96;
+}
+
 function showBag() {
   stopBagTrack();
   state.bagX = window.innerWidth * 0.5;
-  state.bagY = window.innerHeight * 0.82;
+  state.bagY = window.innerHeight * bagBaseY();
+  state.faceSmoothReady = false;
   show(els.screenBag, true);
   if (els.screenBag) {
+    refreshBagMetrics();
     applyBagTransform();
   }
   startBagTrack();
@@ -534,22 +557,50 @@ function hideBag() {
   }
 }
 
-function startBagTrack() {
-  if (state.bagRaf) {
+function ensureGameLoop() {
+  if (state.gameRaf) {
     return;
   }
-  state.bagLastMs = performance.now();
-  const loop = () => {
-    state.bagRaf = window.requestAnimationFrame(loop);
-    tickBagSprite();
+  state.gameLastMs = performance.now();
+  const loop = (now) => {
+    state.gameRaf = window.requestAnimationFrame(loop);
+    const rawDt = Math.max(0, now - state.gameLastMs);
+    state.gameLastMs = now;
+    // Cap only for follow/lerp math — fall uses absolute time.
+    const dt = Math.min(40, rawDt);
+    if (state.bagTrackActive) {
+      tickBagSprite(now, dt);
+    }
+    if (state.giftsActive && state.phase === "playing" && !state.hidden) {
+      tickGiftMotionAt(now, dt);
+      tickGiftSpawnsAt(now);
+    }
+    if (!state.bagTrackActive && !state.giftsActive) {
+      stopGameLoop();
+    }
   };
-  state.bagRaf = window.requestAnimationFrame(loop);
+  state.gameRaf = window.requestAnimationFrame(loop);
+}
+
+function stopGameLoop() {
+  if (state.gameRaf) {
+    window.cancelAnimationFrame(state.gameRaf);
+    state.gameRaf = 0;
+  }
+  state.bagRaf = 0;
+  state.giftRaf = 0;
+}
+
+function startBagTrack() {
+  state.bagTrackActive = true;
+  state.bagLastMs = performance.now();
+  ensureGameLoop();
 }
 
 function stopBagTrack() {
-  if (state.bagRaf) {
-    window.cancelAnimationFrame(state.bagRaf);
-    state.bagRaf = 0;
+  state.bagTrackActive = false;
+  if (!state.giftsActive) {
+    stopGameLoop();
   }
 }
 
@@ -782,23 +833,35 @@ function faceNdc() {
   return null;
 }
 
-function faceBagTarget() {
-  const ndc = faceNdc();
-  if (!ndc) {
+function faceBagTarget(dtMs) {
+  const raw = faceNdc();
+  if (!raw) {
     return null;
   }
-  const bagW = (els.screenBag && els.screenBag.offsetWidth) || 156;
-  const bagH = (els.screenBag && els.screenBag.offsetHeight) || 96;
+  const smoothMs = Math.max(35, GAME.faceSmoothMs || 70);
+  const a = 1 - Math.exp(-(dtMs || 16) / smoothMs);
+  if (!state.faceSmoothReady) {
+    state.faceSmoothX = raw.x;
+    state.faceSmoothY = raw.y;
+    state.faceSmoothReady = true;
+  } else {
+    state.faceSmoothX += (raw.x - state.faceSmoothX) * a;
+    state.faceSmoothY += (raw.y - state.faceSmoothY) * a;
+  }
+  const ndc = { x: state.faceSmoothX, y: state.faceSmoothY };
+  const bagW = state.bagW || 156;
+  const bagH = state.bagH || 96;
   const minX = bagW * 0.5 + 8;
   const maxX = window.innerWidth - bagW * 0.5 - 8;
-  const minY = window.innerHeight * 0.62;
-  const maxY = window.innerHeight - bagH * 0.45 - 8;
+  const minY = window.innerHeight * 0.66;
+  const maxY = window.innerHeight - bagH * 0.38 - 6;
   // Match physical head direction: head right → bag right.
   const u = Math.max(0, Math.min(1, 0.5 + ndc.x * 0.9));
   const v = Math.max(-1, Math.min(1, ndc.y));
+  const baseY = window.innerHeight * bagBaseY();
   return {
     x: minX + u * (maxX - minX),
-    y: window.innerHeight * 0.82 + v * window.innerHeight * 0.1,
+    y: baseY + v * window.innerHeight * 0.08,
     minY,
     maxY,
   };
@@ -814,25 +877,31 @@ function applyBagTransform() {
   els.screenBag.style.transform = `translate3d(${state.bagX}px, ${state.bagY}px, 0) translate(-50%, -50%)`;
 }
 
-function tickBagSprite() {
+function tickBagSprite(now, dtMs) {
   if (!els.screenBag || els.screenBag.hidden) {
     return;
   }
-  const now = performance.now();
-  const dt = Math.min(48, now - (state.bagLastMs || now));
-  state.bagLastMs = now;
-  const dragging = now < state.bagDragUntil;
-  const point = faceBagTarget();
+  const dt = typeof dtMs === "number" ? dtMs : Math.min(40, (now || performance.now()) - (state.bagLastMs || performance.now()));
+  state.bagLastMs = now || performance.now();
+  const dragging = state.bagLastMs < state.bagDragUntil;
+  const point = faceBagTarget(dt);
   if (!point && !dragging) {
     return;
   }
   if (point && !dragging) {
-    // Snappier follow for smoother catch feel.
-    const follow = 1 - Math.exp(-dt / Math.max(18, (GAME.bagFollowMs || 45) * 0.55));
+    // Critically damped follow — snappy enough to catch, soft enough to hide tracking noise.
+    const follow = 1 - Math.exp(-dt / Math.max(45, GAME.bagFollowMs || 95));
     const targetX = point.x;
     const targetY = Math.max(point.minY, Math.min(point.maxY, point.y));
-    state.bagX += (targetX - state.bagX) * follow;
-    state.bagY += (targetY - state.bagY) * follow;
+    const dx = targetX - state.bagX;
+    const dy = targetY - state.bagY;
+    // Deadzone kills micro-jitter without feeling stuck.
+    if (Math.abs(dx) > 0.8) {
+      state.bagX += dx * follow;
+    }
+    if (Math.abs(dy) > 0.8) {
+      state.bagY += dy * follow;
+    }
   }
   applyBagTransform();
 }
@@ -844,12 +913,12 @@ function moveBagToPointer(clientX, clientY) {
   if (state.phase !== "playing" && state.phase !== "countdown") {
     return;
   }
-  const bagW = els.screenBag.offsetWidth || 156;
-  const bagH = els.screenBag.offsetHeight || 96;
+  const bagW = state.bagW || els.screenBag.offsetWidth || 156;
+  const bagH = state.bagH || els.screenBag.offsetHeight || 96;
   const minX = bagW * 0.5 + 8;
   const maxX = window.innerWidth - bagW * 0.5 - 8;
-  const minY = window.innerHeight * 0.55;
-  const maxY = window.innerHeight - bagH * 0.4 - 8;
+  const minY = window.innerHeight * 0.6;
+  const maxY = window.innerHeight - bagH * 0.35 - 6;
   state.bagX = Math.max(minX, Math.min(maxX, clientX));
   state.bagY = Math.max(minY, Math.min(maxY, clientY));
   state.bagDragUntil = performance.now() + 650;
@@ -1203,6 +1272,7 @@ function spawnGift() {
   el.style.top = "0px";
   el.style.transform = `translate3d(${xPx}px, ${yPx}px, 0) translate(-50%, 0)`;
   els.fallingLayer.appendChild(el);
+  const bornAt = performance.now();
   state.gifts.push({
     el,
     imageId,
@@ -1211,6 +1281,8 @@ function spawnGift() {
     collecting: false,
     xPx,
     yPx,
+    startY: yPx,
+    bornAt,
     sway: 0,
     phase: 0,
     w: 0,
@@ -1230,35 +1302,18 @@ function scheduleNextSpawn(baseMs, fromMs) {
 }
 
 function startGiftLoop() {
-  if (state.giftRaf) {
-    return;
-  }
+  state.giftsActive = true;
   state.giftLastMs = performance.now();
   if (!state.nextSpawnAt) {
     scheduleNextSpawn(120, state.giftLastMs);
   }
-  const loop = (now) => {
-    state.giftRaf = window.requestAnimationFrame(loop);
-    if (state.phase !== "playing" || state.hidden) {
-      state.giftLastMs = now;
-      return;
-    }
-    const rawDt = Math.max(0, now - state.giftLastMs);
-    state.giftLastMs = now;
-    // Motion uses real time (capped) so falls stay smooth under AR load.
-    const moveDt = Math.min(48, rawDt);
-    if (moveDt >= 0.5) {
-      tickGiftMotion(moveDt);
-    }
-    tickGiftSpawnsAt(now);
-  };
-  state.giftRaf = window.requestAnimationFrame(loop);
+  ensureGameLoop();
 }
 
 function stopGiftLoop() {
-  if (state.giftRaf) {
-    window.cancelAnimationFrame(state.giftRaf);
-    state.giftRaf = 0;
+  state.giftsActive = false;
+  if (!state.bagTrackActive) {
+    stopGameLoop();
   }
 }
 
@@ -1286,9 +1341,10 @@ function tickGiftSpawnsAt(now) {
   }
 }
 
-function tickGiftMotion(dtMs) {
-  const fallBase = (GAME.fallPxPerSec || 440) * (dtMs / 1000);
+function tickGiftMotionAt(now, dtMs) {
+  const fallBase = GAME.fallPxPerSec || 440;
   const bottomLimit = window.innerHeight + 120;
+  const collectDt = typeof dtMs === "number" ? dtMs : 16;
   for (let i = state.gifts.length - 1; i >= 0; i -= 1) {
     const gift = state.gifts[i];
     if (!gift || !gift.el) {
@@ -1296,7 +1352,7 @@ function tickGiftMotion(dtMs) {
       continue;
     }
     if (gift.collecting) {
-      if (tickCollect(gift, dtMs)) {
+      if (tickCollect(gift, collectDt)) {
         if (gift.el.parentNode) {
           gift.el.parentNode.removeChild(gift.el);
         }
@@ -1304,7 +1360,9 @@ function tickGiftMotion(dtMs) {
       }
       continue;
     }
-    gift.yPx += fallBase * gift.speed;
+    // Absolute time fall — no stutter from uneven rAF under AR load.
+    const age = Math.max(0, now - (gift.bornAt || now));
+    gift.yPx = (gift.startY || 0) + fallBase * gift.speed * (age / 1000);
     gift.el.style.transform =
       "translate3d(" + gift.xPx + "px," + gift.yPx + "px,0) translate(-50%,0)";
     if (isCatch(gift, gift.xPx)) {
@@ -1328,12 +1386,12 @@ function isCatch(gift, drawX) {
     gift.w = gift.el.offsetWidth || 64;
     gift.h = gift.el.offsetHeight || 64;
   }
-  const bagW = els.screenBag.offsetWidth || 156;
-  const bagH = els.screenBag.offsetHeight || 96;
+  const bagW = state.bagW || 156;
+  const bagH = state.bagH || 96;
   // Bag sprite is centered on state.bagX / state.bagY.
   if (!state.bagX || !state.bagY) {
     state.bagX = window.innerWidth * 0.5;
-    state.bagY = window.innerHeight * 0.86;
+    state.bagY = window.innerHeight * bagBaseY();
   }
   const gx = typeof drawX === "number" ? drawX : gift.xPx;
   const gy = gift.yPx + gift.h * 0.5;
@@ -1956,6 +2014,15 @@ function bindUi() {
   });
 
   window.addEventListener("resize", () => {
+    refreshBagMetrics();
+    if (els.screenBag && !els.screenBag.hidden && state.bagY) {
+      // Keep relative vertical placement after rotate/resize.
+      state.bagY = Math.min(
+        window.innerHeight - (state.bagH || 96) * 0.35,
+        Math.max(window.innerHeight * 0.66, window.innerHeight * bagBaseY())
+      );
+      applyBagTransform();
+    }
     if (!els.arScene || !els.arScene.classList.contains("is-live")) {
       return;
     }

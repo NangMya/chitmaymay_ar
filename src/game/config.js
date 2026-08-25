@@ -34,9 +34,12 @@ const GAME = {
     faceLean: 0.12,
   },
   mouthAnchor: 13,
-  bagFollowMs: 28,
+  // Higher = smoother bag under noisy face tracking (less stutter).
+  bagFollowMs: 95,
+  faceSmoothMs: 70,
+  bagBaseY: 0.88,
   collectMs: 420,
-  fallPxPerSec: 480,
+  fallPxPerSec: 460,
   // Round 1: 25 @ 1.0s | Round 2: 30 @ 1.0s | Round 3: 38 @ 0.75s
   spawnEveryMs: [1000, 1000, 750],
   spawnJitterMs: 0,

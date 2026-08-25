@@ -496,7 +496,7 @@ body.is-playing .decor {
 #screen-bag {
   position: fixed;
   left: 50%;
-  bottom: max(8px, calc(env(safe-area-inset-bottom, 0px) + 4vh));
+  bottom: max(4px, calc(env(safe-area-inset-bottom, 0px) + 2vh));
   z-index: 16;
   width: min(156px, 34vw);
   height: auto;
@@ -504,6 +504,8 @@ body.is-playing .decor {
   pointer-events: none;
   will-change: transform;
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout style paint;
 }
 
 body[data-phase="playing"] #screen-bag,
@@ -673,7 +675,7 @@ body[data-phase="ready"] #cta-play {
 
   #screen-bag {
     width: min(132px, 38vw);
-    bottom: max(6px, calc(env(safe-area-inset-bottom, 0px) + 3vh));
+    bottom: max(2px, calc(env(safe-area-inset-bottom, 0px) + 1.5vh));
   }
   .falling-gift {
     width: min(58px, 14vw);
