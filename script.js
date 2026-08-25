@@ -792,9 +792,8 @@ function faceBagTarget() {
   const maxX = window.innerWidth - bagW * 0.5 - 8;
   const minY = window.innerHeight * 0.62;
   const maxY = window.innerHeight - bagH * 0.45 - 8;
-  // Invert X: selfie preview is mirrored (scaleX(-1)), so raw landmark X
-  // is opposite to what the player sees. Match the on-screen face.
-  const u = Math.max(0, Math.min(1, 0.5 - ndc.x * 0.9));
+  // Match physical head direction: head right → bag right.
+  const u = Math.max(0, Math.min(1, 0.5 + ndc.x * 0.9));
   const v = Math.max(-1, Math.min(1, ndc.y));
   return {
     x: minX + u * (maxX - minX),
@@ -1211,7 +1210,7 @@ function spawnGift() {
     collecting: false,
     xPx,
     yPx,
-    sway: (Math.random() - 0.5) * 12,
+    sway: (Math.random() - 0.5) * 4,
     phase: Math.random() * Math.PI * 2,
     w: 0,
     h: 0,
@@ -1236,16 +1235,14 @@ function startGiftLoop() {
       state.giftLastMs = now;
       return;
     }
-    const dtMs = Math.min(50, Math.max(0, now - state.giftLastMs));
+    // Cap to ~1 frame so hitch recovery doesn't teleport gifts.
+    const dtMs = Math.min(22, Math.max(0, now - state.giftLastMs));
     state.giftLastMs = now;
-    if (dtMs < 1) {
+    if (dtMs < 0.5) {
       return;
     }
-    // Keep spawning/falling even if the face hint is showing — otherwise
-    // mobile face flicker makes the round unbeatable (only 1–2 gifts in 30s).
     tickGiftSpawns(dtMs);
     tickGiftMotion(dtMs);
-    tickBagSprite();
   };
   state.giftRaf = window.requestAnimationFrame(loop);
 }
@@ -1281,7 +1278,7 @@ function tickGiftSpawns(dtMs) {
 }
 
 function tickGiftMotion(dtMs) {
-  const fallBase = (GAME.fallPxPerSec || 240) * (dtMs / 1000);
+  const fallBase = (GAME.fallPxPerSec || 420) * (dtMs / 1000);
   const bottomLimit = window.innerHeight + 120;
   for (let i = state.gifts.length - 1; i >= 0; i -= 1) {
     const gift = state.gifts[i];
@@ -1299,10 +1296,12 @@ function tickGiftMotion(dtMs) {
       continue;
     }
     gift.yPx += fallBase * gift.speed;
-    gift.phase = (gift.phase || 0) + dtMs * 0.003;
+    // Tiny sway only — large sway reads as stutter on mobile.
+    gift.phase = (gift.phase || 0) + dtMs * 0.002;
     const swayX = Math.sin(gift.phase) * (gift.sway || 0);
     const drawX = gift.xPx + swayX;
-    gift.el.style.transform = `translate3d(${drawX}px, ${gift.yPx}px, 0) translate(-50%, 0)`;
+    gift.el.style.transform =
+      "translate3d(" + drawX + "px," + gift.yPx + "px,0) translate(-50%,0)";
     if (isCatch(gift, drawX)) {
       catchGift(gift);
       continue;

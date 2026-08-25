@@ -36,7 +36,7 @@ const GAME = {
   mouthAnchor: 13,
   bagFollowMs: 28,
   collectMs: 420,
-  fallPxPerSec: 520,
+  fallPxPerSec: 440,
   // Round 1: 25 @ 1.0s | Round 2: 30 @ 1.0s | Round 3: 38 @ 0.75s
   spawnEveryMs: [1000, 1000, 750],
   spawnJitterMs: 0,

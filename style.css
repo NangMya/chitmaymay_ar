@@ -530,6 +530,8 @@ body[data-phase="countdown"] #screen-bag {
   pointer-events: none;
   will-change: transform;
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
   contain: layout style paint;
 }
 
