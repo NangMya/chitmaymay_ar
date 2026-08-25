@@ -792,11 +792,13 @@ function faceBagTarget() {
   const maxX = window.innerWidth - bagW * 0.5 - 8;
   const minY = window.innerHeight * 0.62;
   const maxY = window.innerHeight - bagH * 0.45 - 8;
-  const u = Math.max(0, Math.min(1, 0.5 + ndc.x * 0.85));
+  // Invert X: selfie preview is mirrored (scaleX(-1)), so raw landmark X
+  // is opposite to what the player sees. Match the on-screen face.
+  const u = Math.max(0, Math.min(1, 0.5 - ndc.x * 0.9));
   const v = Math.max(-1, Math.min(1, ndc.y));
   return {
     x: minX + u * (maxX - minX),
-    y: window.innerHeight * 0.82 + v * window.innerHeight * 0.12,
+    y: window.innerHeight * 0.82 + v * window.innerHeight * 0.1,
     minY,
     maxY,
   };
@@ -825,7 +827,8 @@ function tickBagSprite() {
     return;
   }
   if (point && !dragging) {
-    const follow = 1 - Math.exp(-dt / Math.max(16, GAME.bagFollowMs || 45));
+    // Snappier follow for smoother catch feel.
+    const follow = 1 - Math.exp(-dt / Math.max(18, (GAME.bagFollowMs || 45) * 0.55));
     const targetX = point.x;
     const targetY = Math.max(point.minY, Math.min(point.maxY, point.y));
     state.bagX += (targetX - state.bagX) * follow;
