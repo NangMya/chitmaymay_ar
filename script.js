@@ -1701,8 +1701,8 @@ function tick(delta) {
       hideStatus();
       setPhase("playing");
       state.spawnAccMs = 0;
-      // First drop immediately; later drops keep the round interval (1.0s / 0.75s).
-      state.nextSpawnMs = 50;
+      // Keep exact round cadence: R1/R2 every 1.0s, R3 every 0.75s.
+      state.nextSpawnMs = GAME.spawnEveryMs[state.round - 1] || 1000;
       state.pausedByFace = false;
       startGiftLoop();
     }
