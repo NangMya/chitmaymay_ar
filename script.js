@@ -512,11 +512,12 @@ function bindSceneEvents() {
 }
 
 function showBag() {
-  if (els.screenBag && els.screenBag.hidden) {
-    state.bagX = window.innerWidth * 0.5;
-    state.bagY = window.innerHeight * 0.86;
-  }
+  state.bagX = window.innerWidth * 0.5;
+  state.bagY = window.innerHeight * 0.86;
   show(els.screenBag, true);
+  if (els.screenBag) {
+    applyBagTransform();
+  }
   startBagTrack();
 }
 
@@ -1151,35 +1152,31 @@ function availableItemIds() {
 function spawnGift() {
   const ids = availableItemIds();
   if (!ids.length || !els.fallingLayer) {
-    return;
+    return false;
   }
   const active = state.gifts.filter((g) => g && !g.collecting).length;
-  if (active >= (GAME.maxActiveGifts || 4)) {
-    return;
+  if (active >= (GAME.maxActiveGifts || 5)) {
+    return false;
   }
   const imageId = ids[Math.floor(Math.random() * ids.length)];
   const item = GAME.items[imageId];
-  const minGap = ((GAME.minSpawnXGapPct || 26) / 100) * window.innerWidth;
-  let xPx = window.innerWidth * (0.12 + Math.random() * 0.76);
+  const minGap = ((GAME.minSpawnXGapPct || 20) / 100) * window.innerWidth;
+  let xPx = window.innerWidth * (0.14 + Math.random() * 0.72);
   let tries = 0;
-  while (tries < 10) {
-    const blocked = state.gifts.some((g) => {
-      if (!g || g.collecting) {
-        return false;
-      }
-      return Math.abs(g.xPx - xPx) < minGap && g.yPx < window.innerHeight * 0.45;
-    });
-    if (!blocked && Math.abs(xPx - state.lastSpawnX) >= minGap * 0.7) {
+  while (tries < 12) {
+    const tooClose = state.gifts.some(
+      (g) => g && !g.collecting && Math.abs(g.xPx - xPx) < minGap && g.yPx < 160
+    );
+    if (!tooClose) {
       break;
     }
-    xPx = window.innerWidth * (0.12 + Math.random() * 0.76);
+    xPx = window.innerWidth * (0.14 + Math.random() * 0.72);
     tries += 1;
   }
   state.lastSpawnX = xPx;
   state.drops[imageId] += 1;
 
-  // Keep start Y near the top so timing gaps stay visible (no deep pre-stack).
-  const yPx = -48 - Math.random() * 36;
+  const yPx = -56 - Math.random() * 24;
   const el = document.createElement("img");
   el.className = "falling-gift";
   el.src = `./src/assets/images/${imageId}.webp`;
@@ -1194,19 +1191,21 @@ function spawnGift() {
     el,
     imageId,
     points: item.points,
-    speed: item.speed * (0.9 + Math.random() * 0.2),
+    speed: item.speed * (0.92 + Math.random() * 0.16),
     collecting: false,
     xPx,
     yPx,
-    sway: (Math.random() - 0.5) * 14,
+    sway: (Math.random() - 0.5) * 12,
     phase: Math.random() * Math.PI * 2,
+    w: 0,
+    h: 0,
   });
+  return true;
 }
 
 function scheduleNextSpawn(baseMs) {
   const jitter = GAME.spawnJitterMs || 0;
-  // Only lengthen the gap — never spawn earlier than the base interval.
-  state.nextSpawnMs = Math.max(900, baseMs + Math.random() * jitter);
+  state.nextSpawnMs = Math.max(800, baseMs + Math.random() * jitter);
   state.spawnAccMs = 0;
 }
 
@@ -1217,13 +1216,18 @@ function startGiftLoop() {
   state.giftLastMs = performance.now();
   const loop = (now) => {
     state.giftRaf = window.requestAnimationFrame(loop);
-    if (state.phase !== "playing" || state.hidden || state.pausedByFace) {
+    if (state.phase !== "playing" || state.hidden) {
       state.giftLastMs = now;
       return;
     }
-    const dtMs = Math.min(32, Math.max(0, now - state.giftLastMs));
+    // Face-lost pauses motion, but keep the loop alive so play resumes cleanly.
+    if (state.pausedByFace) {
+      state.giftLastMs = now;
+      return;
+    }
+    const dtMs = Math.min(34, Math.max(0, now - state.giftLastMs));
     state.giftLastMs = now;
-    if (!dtMs) {
+    if (dtMs < 1) {
       return;
     }
     tickGiftSpawns(dtMs);
@@ -1243,7 +1247,7 @@ function tickGiftSpawns(dtMs) {
   const spawnEvery = GAME.spawnEveryMs[state.round - 1] || GAME.spawnEveryMs[0];
   const spawnMax = GAME.spawnMax[state.round - 1] || GAME.spawnMax[0];
   if (!state.nextSpawnMs) {
-    scheduleNextSpawn(spawnEvery);
+    scheduleNextSpawn(Math.min(spawnEvery, 900));
   }
   state.spawnAccMs += dtMs;
   if (state.roundSpawns >= spawnMax) {
@@ -1252,20 +1256,22 @@ function tickGiftSpawns(dtMs) {
   if (state.spawnAccMs < state.nextSpawnMs) {
     return;
   }
-  const before = state.gifts.length;
-  spawnGift();
-  if (state.gifts.length > before) {
+  if (spawnGift()) {
     state.roundSpawns += 1;
+    scheduleNextSpawn(spawnEvery);
+  } else {
+    // Screen full or no items — retry soon instead of waiting a full interval.
+    state.spawnAccMs = 0;
+    state.nextSpawnMs = 400;
   }
-  scheduleNextSpawn(spawnEvery);
 }
 
 function tickGiftMotion(dtMs) {
-  const fallBase = (GAME.fallPxPerSec || 230) * (dtMs / 1000);
-  const bottomLimit = window.innerHeight + 96;
+  const fallBase = (GAME.fallPxPerSec || 240) * (dtMs / 1000);
+  const bottomLimit = window.innerHeight + 120;
   for (let i = state.gifts.length - 1; i >= 0; i -= 1) {
     const gift = state.gifts[i];
-    if (!gift.el) {
+    if (!gift || !gift.el) {
       state.gifts.splice(i, 1);
       continue;
     }
@@ -1279,7 +1285,7 @@ function tickGiftMotion(dtMs) {
       continue;
     }
     gift.yPx += fallBase * gift.speed;
-    gift.phase = (gift.phase || 0) + dtMs * 0.0032;
+    gift.phase = (gift.phase || 0) + dtMs * 0.003;
     const swayX = Math.sin(gift.phase) * (gift.sway || 0);
     const drawX = gift.xPx + swayX;
     gift.el.style.transform = `translate3d(${drawX}px, ${gift.yPx}px, 0) translate(-50%, 0)`;
@@ -1301,16 +1307,21 @@ function isCatch(gift, drawX) {
     return false;
   }
   if (!gift.w || !gift.h) {
-    gift.w = gift.el.offsetWidth || 60;
-    gift.h = gift.el.offsetHeight || 60;
+    gift.w = gift.el.offsetWidth || 64;
+    gift.h = gift.el.offsetHeight || 64;
   }
   const bagW = els.screenBag.offsetWidth || 156;
   const bagH = els.screenBag.offsetHeight || 96;
+  // Bag sprite is centered on state.bagX / state.bagY.
+  if (!state.bagX || !state.bagY) {
+    state.bagX = window.innerWidth * 0.5;
+    state.bagY = window.innerHeight * 0.86;
+  }
   const gx = typeof drawX === "number" ? drawX : gift.xPx;
-  const gy = gift.yPx + gift.h * 0.55;
+  const gy = gift.yPx + gift.h * 0.5;
   const bx = state.bagX;
   const by = state.bagY;
-  return Math.abs(gx - bx) < bagW * 0.4 && Math.abs(gy - by) < bagH * 0.45;
+  return Math.abs(gx - bx) <= bagW * 0.42 && Math.abs(gy - by) <= bagH * 0.5;
 }
 
 function catchGift(gift) {
@@ -1591,8 +1602,8 @@ function countFlips(values, minDelta) {
 }
 
 function tickFacePause(faceVisible, delta) {
-  const inRound = state.phase === "playing" || state.phase === "countdown";
-  if (!inRound) {
+  // Only pause during active play — never freeze the countdown or gift startup.
+  if (state.phase !== "playing") {
     state.pausedByFace = false;
     state.faceLostMs = 0;
     show(els.faceLost, false);
@@ -1650,10 +1661,6 @@ function tick(delta) {
   );
   state.faceLocked = faceVisible;
   tickDistance();
-  if (tickFacePause(faceVisible, delta)) {
-    tickDebug(state.gifts[0]);
-    return;
-  }
 
   if (state.phase === "coach") {
     state.coachMs += delta;
@@ -1668,6 +1675,9 @@ function tick(delta) {
   }
 
   if (state.phase === "countdown") {
+    state.pausedByFace = false;
+    state.faceLostMs = 0;
+    show(els.faceLost, false);
     state.countdownLeftMs -= delta;
     const n = Math.max(1, Math.ceil(state.countdownLeftMs / 1000));
     if (els.statusTitle) {
@@ -1677,7 +1687,8 @@ function tick(delta) {
       hideStatus();
       setPhase("playing");
       state.spawnAccMs = 0;
-      state.nextSpawnMs = 500;
+      state.nextSpawnMs = 450;
+      state.pausedByFace = false;
       startGiftLoop();
     }
     tickDebug(state.gifts[0]);
@@ -1700,6 +1711,12 @@ function tick(delta) {
   }
 
   startGiftLoop();
+  // Face lost pauses timer + gift motion; countdown/startup are never blocked.
+  if (tickFacePause(faceVisible, delta)) {
+    tickDebug(state.gifts[0]);
+    return;
+  }
+
   state.roundLeftMs -= delta;
   updateTimerUi();
   if (state.roundLeftMs <= 0) {
