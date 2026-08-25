@@ -195,7 +195,7 @@ body[data-phase="ended-campaign"] .title {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 33.333vh;
+  height: 38vh;
   z-index: 2;
   pointer-events: none;
   overflow: visible;
@@ -206,91 +206,107 @@ body[data-phase="ended-campaign"] .title {
   z-index: 2;
   pointer-events: none;
   height: auto;
-  max-height: 72%;
+  max-height: 55%;
   object-fit: contain;
   transform-origin: center bottom;
 }
 
-/* Bottom third of the screen — larger characters and props */
+/*
+  Snow stage composition:
+  - Left wing + right wing only
+  - Center ~34%–66% kept empty for copy / CTA
+  - Each prop gets its own slot so boxes do not overlap
+*/
+/* LEFT WING */
 .ct1 {
-  width: clamp(64px, 14vw, 140px);
-  bottom: 10%;
-  left: 2%;
-  animation: scaleAlt 1.4s alternate infinite ease-in-out;
+  width: clamp(72px, 13vw, 130px);
+  left: 1%;
+  bottom: 24%;
+  z-index: 2;
+  animation: scaleAlt 1.6s alternate infinite ease-in-out;
 }
 .man2 {
-  width: clamp(72px, 15vw, 150px);
-  bottom: 14%;
-  left: 12%;
-  animation: moveY 2s alternate infinite ease-in-out;
+  width: clamp(78px, 14vw, 140px);
+  left: 14%;
+  bottom: 30%;
+  z-index: 3;
+  animation: moveY 2.2s alternate infinite ease-in-out;
 }
 .element3 {
-  width: clamp(58px, 12vw, 120px);
-  bottom: 0;
-  left: 6%;
-  animation: rotateAlt 2s alternate infinite ease-in-out;
+  width: clamp(68px, 12vw, 120px);
+  left: 3%;
+  bottom: 2%;
+  z-index: 4;
+  animation: rotateAlt 2.2s alternate infinite ease-in-out;
 }
 .snow_ball {
-  width: clamp(52px, 11vw, 110px);
-  bottom: 28%;
-  left: 22%;
+  width: clamp(58px, 10vw, 100px);
+  left: 0;
+  bottom: 46%;
+  z-index: 2;
 }
 .element5 {
-  width: clamp(44px, 9vw, 96px);
+  width: clamp(52px, 9vw, 92px);
+  left: 20%;
   bottom: 8%;
-  left: 28%;
-  animation: scaleAlt 1.2s alternate infinite ease-in-out;
-}
-.man1 {
-  width: clamp(64px, 13vw, 130px);
-  bottom: 4%;
-  right: 24%;
-  z-index: 3;
-  animation: rotateAlt 1.2s alternate infinite ease-in-out;
-}
-.ct4 {
-  width: clamp(56px, 12vw, 118px);
-  bottom: 36%;
-  right: 12%;
-  animation: scaleAlt 1.3s alternate infinite ease-in-out;
-}
-.ct3 {
-  width: clamp(40px, 8vw, 84px);
-  bottom: 48%;
-  right: 5%;
-}
-.element9 {
-  width: clamp(66px, 14vw, 138px);
-  bottom: 0;
-  right: 6%;
   z-index: 3;
   animation: scaleAlt 1.4s alternate infinite ease-in-out;
 }
+
+/* RIGHT WING */
+.man1 {
+  width: clamp(78px, 14vw, 140px);
+  right: 16%;
+  bottom: 26%;
+  z-index: 3;
+  animation: rotateAlt 1.4s alternate infinite ease-in-out;
+}
+.ct4 {
+  width: clamp(70px, 12vw, 124px);
+  right: 2%;
+  bottom: 34%;
+  z-index: 2;
+  animation: scaleAlt 1.5s alternate infinite ease-in-out;
+}
+.ct3 {
+  width: clamp(48px, 8vw, 84px);
+  right: 3%;
+  bottom: 62%;
+  z-index: 1;
+}
+.element9 {
+  width: clamp(80px, 14vw, 140px);
+  right: 1%;
+  bottom: 2%;
+  z-index: 4;
+  animation: scaleAlt 1.6s alternate infinite ease-in-out;
+}
 .train {
-  width: clamp(64px, 13vw, 130px);
-  bottom: 12%;
-  animation: trainAnimation 4s linear infinite;
+  width: clamp(70px, 12vw, 120px);
+  bottom: 10%;
+  z-index: 3;
+  animation: trainAnimation 6s linear infinite;
 }
 
 @keyframes trainAnimation {
   0% { right: 1%; }
-  100% { right: 20%; }
+  100% { right: 12%; }
 }
 @keyframes scaleAlt {
   0% { transform: scale(1); }
-  100% { transform: scale(1.08); }
+  100% { transform: scale(1.05); }
 }
 @keyframes moveY {
   0% { transform: translateY(0); }
-  100% { transform: translateY(8px); }
+  100% { transform: translateY(5px); }
 }
 @keyframes rotateAlt {
   0% { transform: rotate(0deg); }
-  100% { transform: rotate(8deg); }
+  100% { transform: rotate(5deg); }
 }
 
 body.is-playing .decor {
-  height: 33.333vh;
+  height: 34vh;
   opacity: 1;
 }
 
@@ -504,11 +520,10 @@ body.is-playing .decor {
   left: 0;
   width: min(68px, 15vw);
   height: auto;
-  transform: translate3d(0, -72px, 0);
   pointer-events: none;
   will-change: transform;
   backface-visibility: hidden;
-  contain: layout style;
+  contain: layout style paint;
 }
 
 .falling-gift.is-collecting {
@@ -612,21 +627,37 @@ body[data-phase="ready"] #cta-play {
   .round { margin-top: 24px; font-size: 0.75rem; }
 
   .decor {
-    height: 33.333vh;
+    height: 40vh;
   }
   .decor img {
-    max-height: 78%;
+    max-height: 48%;
   }
-  .ct1 { left: 1%; bottom: 8%; width: 16vw; }
-  .man2 { left: 14%; bottom: 12%; width: 17vw; }
-  .element3 { left: 5%; bottom: 0; width: 14vw; }
-  .snow_ball { left: 24%; bottom: 26%; width: 13vw; }
-  .element5 { left: 30%; bottom: 6%; width: 11vw; }
-  .man1 { right: 26%; bottom: 2%; width: 15vw; }
-  .ct4 { right: 10%; bottom: 34%; width: 14vw; }
-  .ct3 { right: 3%; bottom: 46%; width: 10vw; }
-  .element9 { right: 4%; bottom: 0; width: 16vw; }
-  .train { bottom: 10%; width: 15vw; }
+
+  /* Phone: strict left / right slots, no center overlap with CTA */
+  .ct1 { left: 0; bottom: 28%; width: 17vw; }
+  .man2 { left: 15%; bottom: 34%; width: 18vw; }
+  .element3 { left: 1%; bottom: 3%; width: 16vw; }
+  .snow_ball { left: 0; bottom: 50%; width: 14vw; }
+  .element5 { left: 17%; bottom: 6%; width: 13vw; }
+
+  .man1 { right: 17%; bottom: 28%; width: 18vw; }
+  .ct4 { right: 1%; bottom: 36%; width: 16vw; }
+  .ct3 { right: 2%; bottom: 68%; width: 11vw; }
+  .element9 { right: 0; bottom: 2%; width: 17vw; }
+  .train {
+    display: none; /* moving train caused overlaps on narrow screens */
+  }
+
+  #splash,
+  #camera-denied,
+  #face-coach {
+    bottom: max(18vh, calc(env(safe-area-inset-bottom, 0px) + 14vh));
+    gap: 10px;
+  }
+  #splash .privacy,
+  #splash .how-to {
+    text-shadow: 0 1px 0 #fff, 0 0 8px #fff;
+  }
 
   #screen-bag {
     width: min(132px, 38vw);
@@ -643,16 +674,13 @@ body[data-phase="ready"] #cta-play {
   #play-hint {
     bottom: max(64px, calc(env(safe-area-inset-bottom, 0px) + 16vh));
   }
-  #splash,
-  #camera-denied,
-  #face-coach {
-    bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 6vh));
-    gap: 10px;
-  }
 }
 
 @media (max-width: 380px) {
-  .decor { height: 33.333vh; }
+  .decor { height: 38vh; }
+  .ct1, .man2, .man1 { width: 16vw; }
+  .element3, .ct4, .element9 { width: 15vw; }
+  .snow_ball, .element5, .ct3 { width: 12vw; }
   #camera-preview {
     width: 76px;
     height: 76px;

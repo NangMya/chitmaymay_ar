@@ -98,6 +98,8 @@ const state = {
   countdownLeftMs: 0,
   spawnAccMs: 0,
   nextSpawnMs: 0,
+  giftRaf: 0,
+  giftLastMs: 0,
   roundSpawns: 0,
   lastSpawnX: 0,
   gifts: [],
@@ -1057,6 +1059,7 @@ function resetRun() {
 }
 
 function clearGifts() {
+  stopGiftLoop();
   state.gifts.forEach((gift) => {
     if (gift.el && gift.el.parentNode) {
       gift.el.parentNode.removeChild(gift.el);
@@ -1150,26 +1153,39 @@ function spawnGift() {
   if (!ids.length || !els.fallingLayer) {
     return;
   }
+  const active = state.gifts.filter((g) => g && !g.collecting).length;
+  if (active >= (GAME.maxActiveGifts || 4)) {
+    return;
+  }
   const imageId = ids[Math.floor(Math.random() * ids.length)];
   const item = GAME.items[imageId];
-  const minGap = GAME.minSpawnXGapPct || 22;
-  let xPct = 14 + Math.random() * 72;
+  const minGap = ((GAME.minSpawnXGapPct || 26) / 100) * window.innerWidth;
+  let xPx = window.innerWidth * (0.12 + Math.random() * 0.76);
   let tries = 0;
-  while (Math.abs(xPct - state.lastSpawnX) < minGap && tries < 8) {
-    xPct = 14 + Math.random() * 72;
+  while (tries < 10) {
+    const blocked = state.gifts.some((g) => {
+      if (!g || g.collecting) {
+        return false;
+      }
+      return Math.abs(g.xPx - xPx) < minGap && g.yPx < window.innerHeight * 0.45;
+    });
+    if (!blocked && Math.abs(xPx - state.lastSpawnX) >= minGap * 0.7) {
+      break;
+    }
+    xPx = window.innerWidth * (0.12 + Math.random() * 0.76);
     tries += 1;
   }
-  state.lastSpawnX = xPct;
+  state.lastSpawnX = xPx;
   state.drops[imageId] += 1;
 
-  const xPx = (xPct / 100) * window.innerWidth;
-  // Stagger entry so gifts don't appear on the same horizontal "step".
-  const yPx = -60 - Math.random() * 140;
+  // Keep start Y near the top so timing gaps stay visible (no deep pre-stack).
+  const yPx = -48 - Math.random() * 36;
   const el = document.createElement("img");
   el.className = "falling-gift";
   el.src = `./src/assets/images/${imageId}.webp`;
   el.alt = "";
   el.decoding = "async";
+  el.draggable = false;
   el.style.left = "0px";
   el.style.top = "0px";
   el.style.transform = `translate3d(${xPx}px, ${yPx}px, 0) translate(-50%, 0)`;
@@ -1178,32 +1194,123 @@ function spawnGift() {
     el,
     imageId,
     points: item.points,
-    speed: item.speed * (0.88 + Math.random() * 0.28),
+    speed: item.speed * (0.9 + Math.random() * 0.2),
     collecting: false,
     xPx,
     yPx,
-    sway: (Math.random() - 0.5) * 22,
+    sway: (Math.random() - 0.5) * 14,
     phase: Math.random() * Math.PI * 2,
   });
 }
 
-function isCatch(gift) {
+function scheduleNextSpawn(baseMs) {
+  const jitter = GAME.spawnJitterMs || 0;
+  // Only lengthen the gap — never spawn earlier than the base interval.
+  state.nextSpawnMs = Math.max(900, baseMs + Math.random() * jitter);
+  state.spawnAccMs = 0;
+}
+
+function startGiftLoop() {
+  if (state.giftRaf) {
+    return;
+  }
+  state.giftLastMs = performance.now();
+  const loop = (now) => {
+    state.giftRaf = window.requestAnimationFrame(loop);
+    if (state.phase !== "playing" || state.hidden || state.pausedByFace) {
+      state.giftLastMs = now;
+      return;
+    }
+    const dtMs = Math.min(32, Math.max(0, now - state.giftLastMs));
+    state.giftLastMs = now;
+    if (!dtMs) {
+      return;
+    }
+    tickGiftSpawns(dtMs);
+    tickGiftMotion(dtMs);
+  };
+  state.giftRaf = window.requestAnimationFrame(loop);
+}
+
+function stopGiftLoop() {
+  if (state.giftRaf) {
+    window.cancelAnimationFrame(state.giftRaf);
+    state.giftRaf = 0;
+  }
+}
+
+function tickGiftSpawns(dtMs) {
+  const spawnEvery = GAME.spawnEveryMs[state.round - 1] || GAME.spawnEveryMs[0];
+  const spawnMax = GAME.spawnMax[state.round - 1] || GAME.spawnMax[0];
+  if (!state.nextSpawnMs) {
+    scheduleNextSpawn(spawnEvery);
+  }
+  state.spawnAccMs += dtMs;
+  if (state.roundSpawns >= spawnMax) {
+    return;
+  }
+  if (state.spawnAccMs < state.nextSpawnMs) {
+    return;
+  }
+  const before = state.gifts.length;
+  spawnGift();
+  if (state.gifts.length > before) {
+    state.roundSpawns += 1;
+  }
+  scheduleNextSpawn(spawnEvery);
+}
+
+function tickGiftMotion(dtMs) {
+  const fallBase = (GAME.fallPxPerSec || 230) * (dtMs / 1000);
+  const bottomLimit = window.innerHeight + 96;
+  for (let i = state.gifts.length - 1; i >= 0; i -= 1) {
+    const gift = state.gifts[i];
+    if (!gift.el) {
+      state.gifts.splice(i, 1);
+      continue;
+    }
+    if (gift.collecting) {
+      if (tickCollect(gift, dtMs)) {
+        if (gift.el.parentNode) {
+          gift.el.parentNode.removeChild(gift.el);
+        }
+        state.gifts.splice(i, 1);
+      }
+      continue;
+    }
+    gift.yPx += fallBase * gift.speed;
+    gift.phase = (gift.phase || 0) + dtMs * 0.0032;
+    const swayX = Math.sin(gift.phase) * (gift.sway || 0);
+    const drawX = gift.xPx + swayX;
+    gift.el.style.transform = `translate3d(${drawX}px, ${gift.yPx}px, 0) translate(-50%, 0)`;
+    if (isCatch(gift, drawX)) {
+      catchGift(gift);
+      continue;
+    }
+    if (gift.yPx > bottomLimit) {
+      if (gift.el.parentNode) {
+        gift.el.parentNode.removeChild(gift.el);
+      }
+      state.gifts.splice(i, 1);
+    }
+  }
+}
+
+function isCatch(gift, drawX) {
   if (gift.collecting || !els.screenBag || els.screenBag.hidden || !gift.el) {
     return false;
   }
-  const bag = els.screenBag.getBoundingClientRect();
-  const rect = gift.el.getBoundingClientRect();
-  if (!bag.width || !rect.width) {
-    return false;
+  if (!gift.w || !gift.h) {
+    gift.w = gift.el.offsetWidth || 60;
+    gift.h = gift.el.offsetHeight || 60;
   }
-  const padX = bag.width * 0.12;
-  const padY = bag.height * 0.18;
-  return !(
-    rect.right < bag.left + padX ||
-    rect.left > bag.right - padX ||
-    rect.bottom < bag.top + padY ||
-    rect.top > bag.bottom - padY
-  );
+  const bagW = els.screenBag.offsetWidth || 156;
+  const bagH = els.screenBag.offsetHeight || 96;
+  const gx = typeof drawX === "number" ? drawX : gift.xPx;
+  const gy = gift.yPx + gift.h * 0.55;
+  const bx = state.bagX;
+  const by = state.bagY;
+  return Math.abs(gx - bx) < bagW * 0.4 && Math.abs(gy - by) < bagH * 0.45;
 }
 
 function catchGift(gift) {
@@ -1570,7 +1677,8 @@ function tick(delta) {
       hideStatus();
       setPhase("playing");
       state.spawnAccMs = 0;
-      state.nextSpawnMs = 350;
+      state.nextSpawnMs = 500;
+      startGiftLoop();
     }
     tickDebug(state.gifts[0]);
     return;
@@ -1586,65 +1694,18 @@ function tick(delta) {
   }
 
   if (state.phase !== "playing") {
+    stopGiftLoop();
     tickDebug(state.gifts[0]);
     return;
   }
 
+  startGiftLoop();
   state.roundLeftMs -= delta;
   updateTimerUi();
   if (state.roundLeftMs <= 0) {
+    stopGiftLoop();
     onRoundEnd();
     return;
-  }
-
-  const spawnEvery = GAME.spawnEveryMs[state.round - 1] || GAME.spawnEveryMs[0];
-  const spawnMax = GAME.spawnMax[state.round - 1] || GAME.spawnMax[0];
-  if (!state.nextSpawnMs) {
-    const jitter = GAME.spawnJitterMs || 0;
-    state.nextSpawnMs = Math.max(700, spawnEvery + (Math.random() * 2 - 1) * jitter);
-  }
-  state.spawnAccMs += delta;
-  if (state.roundSpawns < spawnMax && state.spawnAccMs >= state.nextSpawnMs) {
-    state.spawnAccMs = 0;
-    const jitter = GAME.spawnJitterMs || 0;
-    state.nextSpawnMs = Math.max(700, spawnEvery + (Math.random() * 2 - 1) * jitter);
-    spawnGift();
-    state.roundSpawns += 1;
-  }
-
-  const dtMs = Math.min(48, delta);
-  const fallBase = (GAME.fallPxPerSec || 220) * (dtMs / 1000);
-  const bottomLimit = window.innerHeight + 96;
-  for (let i = state.gifts.length - 1; i >= 0; i -= 1) {
-    const gift = state.gifts[i];
-    if (!gift.el) {
-      state.gifts.splice(i, 1);
-      continue;
-    }
-    if (gift.collecting) {
-      if (tickCollect(gift, delta)) {
-        if (gift.el.parentNode) {
-          gift.el.parentNode.removeChild(gift.el);
-        }
-        state.gifts.splice(i, 1);
-      }
-      continue;
-    }
-    gift.yPx += fallBase * gift.speed;
-    gift.phase = (gift.phase || 0) + dtMs * 0.004;
-    const swayX = Math.sin(gift.phase) * (gift.sway || 0);
-    const drawX = gift.xPx + swayX;
-    gift.el.style.transform = `translate3d(${drawX}px, ${gift.yPx}px, 0) translate(-50%, 0)`;
-    if (isCatch(gift)) {
-      catchGift(gift);
-      continue;
-    }
-    if (gift.yPx > bottomLimit) {
-      if (gift.el.parentNode) {
-        gift.el.parentNode.removeChild(gift.el);
-      }
-      state.gifts.splice(i, 1);
-    }
   }
   tickDebug(state.gifts[0]);
 }
