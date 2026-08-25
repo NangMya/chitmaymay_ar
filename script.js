@@ -743,8 +743,7 @@ function faceNdc() {
   if (point) {
     const depth = Math.max(0.2, Math.abs(point.z) || 0.5);
     return {
-      // Flip X for mirrored selfie preview so lean direction feels natural.
-      x: (-point.x / depth) * 1.35,
+      x: (point.x / depth) * 1.35,
       y: (point.y / depth) * 1.1,
     };
   }
@@ -756,7 +755,7 @@ function faceNdc() {
     const y = m[7];
     const z = Math.max(0.2, Math.abs(m[11]) || 0.5);
     if ([x, y, z].every(Number.isFinite)) {
-      return { x: (-x / z) * 1.35, y: (y / z) * 1.1 };
+      return { x: (x / z) * 1.35, y: (y / z) * 1.1 };
     }
   }
 
@@ -776,7 +775,7 @@ function faceNdc() {
     els.faceTarget.object3D.getWorldPosition(faceWorld);
     cameraWorld.copy(faceWorld).project(camera);
     if (Number.isFinite(cameraWorld.x) && Number.isFinite(cameraWorld.y)) {
-      return { x: -cameraWorld.x, y: cameraWorld.y };
+      return { x: cameraWorld.x, y: cameraWorld.y };
     }
   }
   return null;
@@ -1699,7 +1698,8 @@ function tick(delta) {
       hideStatus();
       setPhase("playing");
       state.spawnAccMs = 0;
-      state.nextSpawnMs = GAME.spawnEveryMs[state.round - 1] || 1000;
+      // First drop immediately; later drops keep the round interval (1.0s / 0.75s).
+      state.nextSpawnMs = 50;
       state.pausedByFace = false;
       startGiftLoop();
     }
